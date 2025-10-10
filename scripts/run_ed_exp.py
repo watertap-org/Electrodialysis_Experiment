@@ -334,7 +334,7 @@ def run_experiment():
         "fs.prod.properties[0].conc_mol_phase_comp['Liq','Na_+']": 0.1,
         "fs.prod.properties[0].conc_mol_phase_comp['Liq','Ca_2+']": 1,
         "fs.prod.properties[0].conc_mol_phase_comp['Liq','Mg_2+']": 10,
-        # "fs.current_density_avg":1,
+        "fs.current_density_avg": 0.05,
     }
     target_var_list, target_df = ds.prepare_target_variable_dt(dt)
     exp.add_sse_objective_of_selected_variables(
@@ -357,7 +357,7 @@ def run_experiment():
     finally:
         # This runs both after success and after Ctrl-C
         exp.save_model_hdf(
-            "src/electrodialysis_experiment/data/output/m_concSSE_minimized_slkocvcu_with_surrloglin.h5"
+            "src/electrodialysis_experiment/data/output/m_conc_cd05_SSE_minimized_slkocvcu_with_surrloglin.h5"
         )
 
     for k, edfs in model.sample_blk.items():
@@ -402,11 +402,18 @@ def run_experiment():
         :size, "fs.prod.properties[0].conc_mol_phase_comp['Liq','Mg_2+']"
     ].tolist()
 
+    sim_CurrD = [
+        pyo.value(model.sample_blk[i].fs.current_density_avg) for i in model.sample_set
+    ]
+    exp_CurrD = target_df.loc[:size, "fs.current_density_avg"].tolist()
+
     fig1 = plot_ion(exp_Na, sim_Na, "Na⁺", "blue", "square")
     fig2 = plot_ion(exp_Ca, sim_Ca, "Ca²⁺", "red", "square")
     fig3 = plot_ion(exp_Mg, sim_Mg, "Mg²⁺", "green", "square")
     combined_fig = panel_from_figs([fig1, fig2, fig3], rows=1, cols=3)
     combined_fig.show()
+    fig4 = plot_current_dens(exp_CurrD, sim_CurrD, "Current Density", "purple", "cross")
+    fig4.show()
 
 
 def _get_ion_dict():
@@ -623,11 +630,34 @@ def plot_current_dens(exp, sim, ion_name, color, marker):
         title=f"Simulated vs Experimental {ion_name} Concentration",
         xaxis_title="Experimental (A/m²)",
         yaxis_title="Simulated (A/m²)",
-        legend_title="current density, average",
-        width=700,
-        height=500,
+        xaxis=dict(
+            showline=True,
+            linewidth=2,
+            linecolor="black",
+            mirror=True,
+            ticks="outside",
+            title_font=dict(size=16),
+            tickfont=dict(size=14),
+            range=[min_val, max_val],
+        ),
+        yaxis=dict(
+            showline=True,
+            linewidth=2,
+            linecolor="black",
+            mirror=True,
+            ticks="outside",
+            title_font=dict(size=16),
+            tickfont=dict(size=14),
+            range=[min_val, max_val],
+        ),
+        showlegend=False,
+        width=600,
+        height=600,
+        paper_bgcolor="white",
+        plot_bgcolor="white",
     )
     fig.show()
+    return fig
 
 
 def plot_trans_number_plotly(model, sample_idx):
