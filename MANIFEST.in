@@ -1,0 +1,21 @@
+# top-level metadata
+include README.md
+include pyproject.toml
+
+# ------------------------------------------------------------------
+# In-package data files (redundant for safety; setuptools picks them up
+# via [tool.setuptools.package-data] in pyproject.toml)
+# ------------------------------------------------------------------
+recursive-include src/electrodialysis_experiment/configs *.yaml *.yml
+recursive-include src/electrodialysis_experiment/data/raw *.csv *.parquet *.h5 *.hdf5
+recursive-include src/electrodialysis_experiment/data/output *.csv *.parquet *.h5 *.hdf5
+
+# ------------------------------------------------------------------
+# Explicitly EXCLUDE anything else that might be large, temporary,
+# or not intended for distribution
+# ------------------------------------------------------------------
+prune src/electrodialysis_experiment/data/tmp
+prune src/electrodialysis_experiment/data/intermediate
+prune src/electrodialysis_experiment/data/derived
+prune notebooks
+prune tests
