@@ -14,7 +14,7 @@
 ###############################################################################
 # Copyright …
 ###############################################################################
-
+from __future__ import annotations
 from pyomo.environ import (
     ConcreteModel,
     Var,
@@ -41,8 +41,6 @@ import idaes.core.util.scaling as iscale
 import idaes.logger as idaeslogger
 
 from electrodialysis_experiment.processes.base import (
-    ElectricalOperationMode,
-    PressureDropMethod,
     ED_base,
 )
 
@@ -50,19 +48,12 @@ from electrodialysis_experiment.utils.user_scaling import apply_scaling
 
 from watertap.costing.watertap_costing_package import WaterTAPCosting
 
-from electrodialysis_experiment.processes.solution import (
-    MCASParameterBlock,
-    ElectricalMobilityCalculation,
-    EquivalentConductivityCalculation,
-    TransportNumberCalculation, 
-)
-
-import plotly.graph_objects as go
+from electrodialysis_experiment.processes.solution import MCASParameterBlock
 from pathlib import Path
 import yaml
 
 from electrodialysis_experiment.configs.process_config_schema import (
-    OneStageSinglePassConfig, EDStackConfig, ProcessConfig, IonConfig, SolutionConfig
+    OneStageSinglePassConfig,
 )
 from electrodialysis_experiment.configs.scaling_schema import ScalingConfig
 
@@ -342,7 +333,6 @@ class OneStageSinglePass:
                          "If there is a scaling configuration, make sure to import it by import_scaling_config().")
         
         
-
     def _initialize_units(self, scaling_config: ScalingConfig = None):
         m = self.m
         #self._apply_user_scaling(scaling_config)
@@ -379,9 +369,6 @@ class OneStageSinglePass:
 
         if hasattr(m.fs, "costing"):
             m.fs.costing.initialize()
-
-        
-
         
     # -----------------------------
     # Optional constraints / objectives / properties
@@ -415,77 +402,55 @@ class OneStageSinglePass:
     # Parameterization / updates
     # -----------------------------
     @staticmethod
-    def make_initarg_list(conc_mass_list, mw=0.0585, flow_rate_vol=5.2e-4):
-        conc_mass_in = pd.DataFrame(data=conc_mass_list, columns=["C0"])  # g/L
-        conc_mol_in = conc_mass_in / mw
-        initarg = []
-        for k in conc_mol_in["C0"]:
-            initarg.append(
-                {
-                    ("flow_vol_phase", ("Liq")): flow_rate_vol,
-                    ("conc_mol_phase_comp", ("Liq", "Na_+")): k,
-                    ("conc_mol_phase_comp", ("Liq", "Cl_-")): k,
-                }
-            )
-        return initarg
-
-    def apply_param_values(self, yaml_file: str = "", yaml_data=None, prefix: str = "m.fs"):
-        """
-        Mirror of original recursive fixer, now rooted at self.m.
-        """
-        m = self.m
-        if yaml_data is None:
-            with open(yaml_file, "r") as file:
-                yaml_data = yaml.safe_load(file) or {}
-
-        def _apply(target, data, prefix_str):
-            for key, val in data.items():
-                if isinstance(val, dict):
-                    if key == "0":
-                        _apply(target=target, data=val, prefix_str=f"{prefix_str}[{key}]")
-                    else:
-                        _apply(target=getattr(target, key), data=val, prefix_str=f"{prefix_str}.{key}")
-                else:
-                    if target.is_indexed():
-                        if "fs._time" in target.index_set().name:
-                            var = getattr(target[0], key)
-                        else:
-                            for i, v in target.items():
-                                if i == key:
-                                    v.fix(val)
-                            continue
-                    else:
-                        var = getattr(target, key)
-                    var.fix(val)
-
-        _apply(m, yaml_data, prefix)
-
-    def set_ion_memb_properties(self, diff=3.28e-11, **property_dict):
-        """
-        Fix membrane diffusivity and transport numbers in CEM/AEM for each ion.
-        """
-        m = self.m
-        for ion in property_dict["solute_list"]:
-            m.fs.EDstack.solute_diffusivity_membrane["cem", ion].fix(diff)
-            m.fs.EDstack.solute_diffusivity_membrane["aem", ion].fix(diff)
-            m.fs.EDstack.ion_trans_number_membrane["cem", ion, :].fix(
-                property_dict["membrane_transport_number"][ion]["cem"]
-            )
-            m.fs.EDstack.ion_trans_number_membrane["aem", ion, :].fix(
-                property_dict["membrane_transport_number"][ion]["aem"]
-            )
-
     def update_cation_cem_transport_number(self, t_cation_cem_dict: dict):
         m = self.m
         for ion, t_num in t_cation_cem_dict.items():
             print(t_num)
             m.fs.EDstack.ion_trans_number_membrane["cem", ion, :].fix(t_num)
 
-    
+    @staticmethod
+    def update_var_values(self, updates: dict | BaseModel) -> None:
+        """
+        Update variable values in the model.
 
-    # -----------------------------
-    # Variable utilities
-    # -----------------------------
+        Parameters
+        ----------
+        updates : dict | BaseModel
+            Either a plain dict of {var_name: value}
+            or a Pydantic model (e.g., UpdateParam) containing the same keys.
+        """
+        # --- Normalize to a plain dict ---
+        if isinstance(updates, Mapping):
+            update_dict = dict(updates)
+        elif isinstance(updates, BaseModel):
+            # works for both v1 (.dict()) and v2 (.model_dump())
+            if hasattr(updates, "model_dump"):
+                update_dict = updates.model_dump(exclude_unset=True)
+            else:
+                update_dict = updates.dict()
+        else:
+            raise TypeError(
+                f"Expected dict or BaseModel, got {type(updates).__name__}"
+            )
+
+        m = self.m
+        for var_name, val in update_dict.items():
+            var = self.search_var_by_name(m, var_name)
+            if var is None:
+                raise KeyError(f"Variable '{var_name}' not found in model.")
+
+            if var.is_indexed():
+                if not isinstance(val, Mapping):
+                    raise TypeError(
+                        f"Variable '{var_name}' is indexed; "
+                        "expected a dict of {index: value}."
+                    )
+                for idx, vval in val.items():
+                    idx = idx if isinstance(idx, tuple) else (idx,)
+                    var[idx].fix(vval)
+            else:
+                var.fix(val)
+
     @staticmethod
     def search_var_by_name(model, var_name: str):
         var_candidates = []
@@ -501,29 +466,7 @@ class OneStageSinglePass:
         else:
             return var_candidates[0]
 
-    def update_var_values_pydantic(self, update_param_obj):
-        update_dict = update_param_obj.dict()
-        self.update_var_values(update_dict)
-
-    def update_var_values(self, update_dict: dict):
-        m = self.m
-        for var_name, val in update_dict.items():
-            var = self.search_var_by_name(m, var_name)
-            if var.is_indexed():
-                if not isinstance(val, dict):
-                    raise TypeError(
-                        f"Variable '{var_name}' is indexed; expected a dict of {{index: value}}."
-                    )
-                for idx, vval in val.items():
-                    idx = idx if isinstance(idx, tuple) else (idx,)
-                    var[idx].fix(vval)
-            else:
-                var.fix(val)
-
-    # -----------------------------
-    # Display / Plot
-    # -----------------------------
-    def display_model_metrics(self, ion_list=None):
+    def display_selected_model_metrics(self, ion_list=None):
         ion_list = ion_list or []
         m = self.m
 
@@ -598,19 +541,6 @@ class OneStageSinglePass:
         if hasattr(m.fs, "sar"):
             m.fs.sar.pprint()
 
-    @staticmethod
-    def plot_length_profile(length, ed_property, name: str):
-        l_ind = length * (np.round(np.arange(0, 1.05, 0.05), 2))
-        marker = dict(size=8, color="darkblue")
-        layout = dict(
-            xaxis=dict(title=dict(text="Position along the cell length (m)", font=dict(size=12), standoff=5),
-                       range=[0, float(np.ceil(l_ind[-1] * 100) / 100)], tick0=0, mirror=True),
-            yaxis=dict(title=dict(text=name, font=dict(size=12), standoff=5), side="left", mirror=True),
-            height=300, width=400, showlegend=False, template="simple_white",
-        )
-        fig = go.Figure(layout=layout)
-        fig.add_trace(go.Scatter(x=l_ind, y=value(ed_property), mode="markers+lines", name=name, marker=marker))
-        fig.show()
 
 
 

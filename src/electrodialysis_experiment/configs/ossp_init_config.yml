@@ -80,4 +80,42 @@ InitialValue:
           value: 6.35e-4
         - index: ["cem"]
           value: 5.7e-4
+    
+    - indexedVar: fs.EDstack.ion_trans_number_membrane
+      items:
+        - index: ["cem", "Na_+"]
+          value: 0.916
+        - index: ["aem", "Na_+"]
+          value: 0
+        - index: ["cem", "Ca_2+"]
+          value: 0.024
+        - index: ["aem", "Ca_2+"]
+          value: 0
+        - index: ["cem", "Mg_2+"]
+          value: 0.059
+        - index: ["aem", "Mg_2+"]
+          value: 0
+        - index: ["cem", "Cl_-"]
+          value: 0
+        - index: ["aem", "Cl_-"]
+          value: 1
+
+    - indexedVar: fs.EDstack.solute_diffusivity_membrane
+      items:
+        - index: ["cem", "Na_+"]
+          value: 3.28e-11
+        - index: ["aem", "Na_+"]
+          value: 3.28e-11
+        - index: ["cem", "Ca_2+"]
+          value: 3.28e-11
+        - index: ["aem", "Ca_2+"]
+          value: 3.28e-11
+        - index: ["cem", "Mg_2+"]
+          value: 3.28e-11
+        - index: ["aem", "Mg_2+"]
+          value: 3.28e-11
+        - index: ["cem", "Cl_-"]
+          value: 3.28e-11
+        - index: ["aem", "Cl_-"]
+          value: 3.28e-11
 
