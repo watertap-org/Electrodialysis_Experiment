@@ -13,33 +13,23 @@ from electrodialysis_experiment.processes.solution import (
     TransportNumberCalculation,
 )
 
-## Helper function
-
-def _flatten_phase_map(nested: Optional[Dict[str, Dict[str, float]]]) \
-        -> Optional[Dict[Tuple[str, str], float]]:
-    """
-    Convert YAML-friendly nested map:
-        {"Liq": {"A": 1e-9, "B": 1e-10}}
-    into tuple-keyed map:
-        {("Liq", "A"): 1e-9, ("Liq", "B"): 1e-10}
-    """
-    if not nested:
-        return None
-    out: Dict[Tuple[str, str], float] = {}
-    for phase, comp_map in nested.items():
-        if comp_map is None:
-            continue
-        for comp, val in comp_map.items():
-            out[(phase, comp)] = float(val)
-    return out
 
 class ProcessConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     build_costing: bool = False                    
-    solver_linear: str = "ma27"
-    solver_max_iter: Optional[int] = None
+    # solver_linear: str = "ma27"
+    # solver_max_iter: Optional[int] = None
     tee: bool = True
     output_dir: Optional[str] = None
+
+class IPOPTconfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    tol: float = 1e-8
+    max_iter: int = 3000
+    linear_solver: str = "ma27"
+    bound_push: float = 1e-5
+    mu_strategy: str = "monotone"
+    nlp_scaling_method: str = "user-scaling"
 
 class EDStackConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -80,46 +70,38 @@ class IonConfig(BaseModel):
     diffusivity_data: Optional[Dict[Tuple[str, str], float]] = None
     elec_mobility_data: Optional[Dict[Tuple[str, str], float]] = None
     trans_num_data: Optional[Dict[Tuple[str, str], float]] = None
-    
 
-    # YAML-friendly nested forms (phase -> {species: value})
-    diffusivity_data_yaml: Optional[Dict[str, Dict[str, float]]] = Field(default=None)
-    elec_mobility_data_yaml: Optional[Dict[str, Dict[str, float]]] = Field(default=None)
-    trans_num_data_yaml: Optional[Dict[str, Dict[str, float]]] = Field(default=None)
-
-    # Normalizers: if tuple-keyed dict not provided, derive it from *_yaml
-    @field_validator("diffusivity_data", mode="before")
+    @field_validator("diffusivity_data", "elec_mobility_data", "trans_num_data", mode="before")
     @classmethod
-    def _norm_diff(cls, v, info):
+    def _normalize_dict(cls, v):
+        #  already tuple-keyed 
         if isinstance(v, dict) and all(isinstance(k, tuple) for k in v):
             return v
-        return _flatten_phase_map(info.data.get("diffusivity_data_yaml"))
 
-    @field_validator("elec_mobility_data", mode="before")
-    @classmethod
-    def _norm_mobility(cls, v, info):
-        if isinstance(v, dict) and all(isinstance(k, tuple) for k in v):
-            return v
-        return _flatten_phase_map(info.data.get("elec_mobility_data_yaml"))
+        # nested keys
+        if isinstance(v, dict) and all(isinstance(val, dict) for val in v.values()):
+            out = {}
+            for phase, comps in v.items():
+                for sp, val in comps.items():
+                    out[(phase, sp)] = float(val)
+            return out
 
-    @field_validator("trans_num_data", mode="before")
-    @classmethod
-    def _norm_tn(cls, v, info):
-        if isinstance(v, dict) and all(isinstance(k, tuple) for k in v):
-            return v
-        return _flatten_phase_map(info.data.get("trans_num_data_yaml"))
+        # Anything else (None, wrong type, etc.)
+        return v
+
 
 class SolutionConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    electrical_mobility_calculation: ElectricalMobilityCalculation = ElectricalMobilityCalculation.Nernst_Einstein
-    equivalent_conductivity_calculation: EquivalentConductivityCalculation = EquivalentConductivityCalculation.Lange
-    transport_number_calculation: TransportNumberCalculation = TransportNumberCalculation.FixedValue
+    electrical_mobility_calculation: ElectricalMobilityCalculation = ElectricalMobilityCalculation.none
+    equivalent_conductivity_calculation: EquivalentConductivityCalculation = EquivalentConductivityCalculation.ElectricalMobility
+    transport_number_calculation: TransportNumberCalculation = TransportNumberCalculation.ElectricalMobility
     equiv_conductivity_phase_data: Optional[Dict[str,float]] = None  
     
 class OneStageSinglePassConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     ed_stack: EDStackConfig = Field(default_factory=EDStackConfig)
     process: ProcessConfig = Field(default_factory=ProcessConfig)
+    ipopt: IPOPTconfig = Field(default_factory=IPOPTconfig)
     ion: IonConfig 
     solution: SolutionConfig = Field(default_factory=SolutionConfig)
 

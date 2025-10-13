@@ -46,6 +46,8 @@ from electrodialysis_experiment.processes.base import (
     ED_base,
 )
 
+from electrodialysis_experiment.utils.user_scaling import apply_scaling
+
 from watertap.costing.watertap_costing_package import WaterTAPCosting
 
 from electrodialysis_experiment.processes.solution import (
@@ -56,7 +58,14 @@ from electrodialysis_experiment.processes.solution import (
 )
 
 import plotly.graph_objects as go
+from pathlib import Path
 import yaml
+
+from electrodialysis_experiment.configs.process_config_schema import (
+    OneStageSinglePassConfig, EDStackConfig, ProcessConfig, IonConfig, SolutionConfig
+)
+from electrodialysis_experiment.configs.scaling_schema import ScalingConfig
+
 
 
 _log = idaeslogger.getIdaesLogger(__name__)
@@ -64,77 +73,76 @@ _log = idaeslogger.getIdaesLogger(__name__)
 
 class OneStageSinglePass:
     """
-    Object-oriented wrapper of the original function-based single-pass ED build.
-    Encapsulates:
-      - Model construction
-      - Optional costing
-      - Constraints/Expressions
-      - Initialization & solve
-      - Updating/fixing parameters
-      - Reporting & plotting helpers
+    Object-oriented wrapper of the single stage and single pass ED process.
     """
 
-    # -----------------------------
-    # Construction / Build
-    # -----------------------------
-    def __init__(self, *, build_costing: bool = False, finite_element: int = 10, **ion_dict):
+    @classmethod
+    def from_yaml(cls, path: str | Path) -> "OneStageSinglePass":
+        with open(path, "r") as f:
+            data = yaml.safe_load(f) or {}
+        cfg = OneStageSinglePassConfig(**data)
+        return cls(cfg) ## TODO: consdier passing only configs provided in YAML to bypass the default values in the schema; maybe not necessary
+    
+    @classmethod
+    def import_scaling_config(cls, path: str | Path) -> ScalingConfig:
+        with open(path, "r") as f:
+            raw = yaml.safe_load(f) or {}
+        data = raw.get("scaling", {})
+        cfg = ScalingConfig(**data)
+        return cfg
+
+    def __init__(self, cfg: OneStageSinglePassConfig, scaling_cfg: ScalingConfig = None):
         """
         Create a one-stage single-pass ED flowsheet.
 
         Parameters
         ----------
-        build_costing : bool
-            Whether to add WaterTAP costing blocks.
-        finite_element : int
-            Number of finite elements along ED length domain.
-        **ion_dict : dict
-            Ion/solution property inputs; default populated if empty.
+       cfg : OneStageSinglePassConfig
+            Validated configuration (can be created via from_yaml()).
         """
-        self.build_costing = build_costing
-        self.finite_element = finite_element
-        self.ion_dict = dict(ion_dict or {})
-
+        self.config = cfg
+        if scaling_cfg is not None:
+            self.scaling_config = scaling_cfg
+        # Pyomo model and IDAES flowsheet shell
         self.m = ConcreteModel()
         self.m.fs = FlowsheetBlock(dynamic=False)
-
-        if not self.ion_dict:
-            self.ion_dict = {
-                "solute_list": ["Na_+", "Ca_2+", "Mg_2+", "Cl_-", "SO4_2-"],
-                "mw_data": {
-                    "H2O": 18e-3,
-                    "Na_+": 23e-3,
-                    "Mg_2+": 24.305e-3,
-                    "Ca_2+": 40.078e-3,
-                    "Cl_-": 35.5e-3,
-                    "SO4_2-": 96.06e-3,
-                },
-                "diffusivity_data": {
-                    ("Liq", "Na_+"): 1.33e-9,
-                    ("Liq", "Ca_2+"): 0.793e-9,
-                    ("Liq", "Mg_2+"): 0.705e-9,
-                    ("Liq", "Cl_-"): 2.03e-9,
-                    ("Liq", "SO4_2-"): 1.07e-9,
-                },
-                "charge": {"Na_+": 1, "Mg_2+": 2, "Ca_2+": 2, "Cl_-": -1, "SO4_2-": -2},
-            }
-
+        # Model details
         self._build_properties()
         self._build_units()
-        if self.build_costing:
+        if self.config.process.build_costing:
             self._build_costing()
         self._add_expressions_and_constraints()
         self._wire_arcs()
 
     def _build_properties(self):
         m = self.m
-        m.fs.properties = MCASParameterBlock(
-            **self.ion_dict,
-            elec_mobility_calculation=ElectricalMobilityCalculation.EinsteinRelation,
-            equiv_conductivity_calculation=EquivalentConductivityCalculation.Onsager_Falkenhagen,
-        )
+        ion = self.config.ion
+        sol = self.config.solution
+        # Assemble kwargs for MCASParameterBlock
+        mcas_kwargs = {
+            "solute_list": ion.solute_list,
+            "mw_data": ion.mw_data,
+            "charge": ion.charge,
+            # toggles/models
+            "elec_mobility_calculation": sol.electrical_mobility_calculation,
+            "equiv_conductivity_calculation": sol.equivalent_conductivity_calculation,
+        }
+        # optional maps (only if provided)
+        if ion.diffusivity_data is not None:
+            mcas_kwargs["diffusivity_data"] = ion.diffusivity_data
+        if ion.elec_mobility_data is not None:
+            mcas_kwargs["elec_mobility_data"] = ion.elec_mobility_data
+        if ion.trans_num_data is not None:
+            mcas_kwargs["trans_num_data"] = ion.trans_num_data
+        if sol.equiv_conductivity_phase_data is not None:
+            mcas_kwargs["equiv_conductivity_phase_data"] = sol.equiv_conductivity_phase_data
+
+        m.fs.properties = MCASParameterBlock(**mcas_kwargs)
 
     def _build_units(self):
         m = self.m
+        ed_config = self.config.ed_stack
+
         m.fs.feed = Feed(property_package=m.fs.properties)
         m.fs.sepa = Separator(property_package=m.fs.properties, outlet_list=["to_dil_in", "to_conc_in"])
 
@@ -147,21 +155,34 @@ class OneStageSinglePass:
         m.fs.pump1.del_component("ratioP_calculation")
 
         # ED stack
+        ed_kwargs = {
+            "dynamic": ed_config.dynamic,
+            "has_holdup": ed_config.has_holdup,
+            "has_pressure_change": ed_config.has_pressure_change,
+            "pressure_drop_method": ed_config.pressure_drop_method,
+            "friction_factor_method": ed_config.friction_factor_method,
+            "hydraulic_diameter_method": ed_config.hydraulic_diameter_method,
+            "operation_mode": ed_config.operation_mode,
+            "limiting_current_density_method": ed_config.limiting_current_density_method,
+            "limiting_current_density_data": ed_config.limiting_current_density_data,
+            "has_nonohmic_potential_membrane": ed_config.has_nonohmic_potential_membrane,
+            "has_Nernst_diffusion_layer": ed_config.has_Nernst_diffusion_layer,
+            "is_isothermal": ed_config.is_isothermal,
+            "property_package_args": ed_config.property_package_args,
+            "transformation_method": ed_config.transformation_method,
+            "transformation_scheme": ed_config.transformation_scheme,
+            "finite_elements": ed_config.finite_elements,
+            "collocation_points": ed_config.collocation_points,
+        }
         m.fs.EDstack = ED_base(
             property_package=m.fs.properties,
-            operation_mode=ElectricalOperationMode.Constant_Voltage,
-            finite_elements=self.finite_element,
-            has_pressure_change=True,
-            has_nonohmic_potential_membrane=True,
-            has_Nernst_diffusion_layer=True,
-            pressure_drop_method=PressureDropMethod.experimental,
+            **ed_kwargs,
         )
 
-        # Sinks
         m.fs.prod = Product(property_package=m.fs.properties)
         m.fs.disp = Product(property_package=m.fs.properties)
 
-        # Touch variables to ensure component construction (as in original)
+        # Touch variables to ensure component construction
         m.fs.feed.properties[0].conc_mol_phase_comp[...]
         m.fs.prod.properties[0].conc_mol_phase_comp[...]
         m.fs.disp.properties[0].conc_mol_phase_comp[...]
@@ -236,23 +257,6 @@ class OneStageSinglePass:
             / (m.fs.EDstack.voltage_applied[0] * m.fs.EDstack.cell_width * m.fs.EDstack.cell_length)
         )
 
-        # Transport number estimate (cation-only)
-        def rule_trans_num_ce_calc(m, i):
-            num = (
-                m.feed.properties[0].conc_mol_phase_comp["Liq", i] * m.properties.charge_comp[i]
-                - m.prod.properties[0].conc_mol_phase_comp["Liq", i] * m.properties.charge_comp[i]
-            )
-            den = sum(
-                (
-                    m.feed.properties[0].conc_mol_phase_comp["Liq", k] * m.properties.charge_comp[k]
-                    - m.prod.properties[0].conc_mol_phase_comp["Liq", k] * m.properties.charge_comp[k]
-                )
-                for k in m.EDstack.cation_set
-            )
-            return num / den
-
-        m.fs.trans_num_ce_calc = Expression(m.fs.EDstack.cation_set, rule=rule_trans_num_ce_calc)
-
     def _wire_arcs(self):
         m = self.m
         m.fs.arc0 = Arc(source=m.fs.feed.outlet, destination=m.fs.sepa.inlet)
@@ -265,35 +269,147 @@ class OneStageSinglePass:
         TransformationFactory("network.expand_arcs").apply_to(m)
 
     # -----------------------------
+    # Init / Solve
+    # -----------------------------
+    def initialize_process(
+        self,
+        scaling_config: ScalingConfig = None,
+        solve_after_init: bool = True,
+        initargs=None,
+    ):
+        """
+        Initialize at DOF==0, optionally solve immediately.
+        """
+        m = self.m
+        self._apply_user_scaling(scaling_config)
+        iscale.calculate_scaling_factors(m.fs.feed)
+        m.fs.feed.properties.calculate_state(initargs, hold_state=True)
+        dof = mstat.degrees_of_freedom(m)
+        _log.info(f"The process is being intialized at DOF = {dof}.")
+        try:
+            self._initialize_units(scaling_config) 
+        except Exception as experr:
+            _log.warning(f"Initialization failed at the unit level: {experr}")
+
+        if solve_after_init:
+            iscale.constraint_scaling_transform(
+                m.fs.eq_electrodialysis_equal_flow,
+                10 * iscale.get_scaling_factor(m.fs.feed.properties[0].flow_vol_phase["Liq"]),
+            )
+            iscale.calculate_scaling_factors(m)
+            res = self.solve(m)
+            if str(res.solver.termination_condition) != "optimal":
+                _log.warning(
+                    f"Process {m.name} did not yield optimal solution when solved at the initial point. "
+                    f"Solver termination condition: {res.solver.termination_condition}"
+                )
+            else:
+                _log.info(f"Process {m.name} yielded optimal solution at the initial point.")
+        else:
+            _log.info(f"Process {m.name} was set at an estimated initial point determined at the unit level and not solved as a whole.")
+
+    
+    @classmethod
+    def solve(
+        cls,
+        model,
+        solver=None,
+    ):
+        if solver is None:
+            solver = get_solver()
+        pc = cls.cfg.process
+        tee = pc.tee if pc.tee is not None else True
+        ipopt_cfg = cls.config.ipopt
+        for k, v in ipopt_cfg.model_dump().items():
+            if v is not None:
+                _log.info(f"Setting IPOPT option {k} = {v}")
+                if solver is not None:
+                    solver.options[k] = v
+        results = solver.solve(model, tee=tee)
+        _log.info(f"Solved model: {model.name}; solver termination condition: {results.solver.termination_condition}")
+        return results
+    
+    def _apply_user_scaling(self, scaling_config: ScalingConfig = None):
+        # Scaling
+        m = self.m
+
+        if  scaling_config is not None:
+            apply_scaling(m, scaling_config)
+            _log.info("Applied user-provided scaling configuration.")
+
+        else:
+            _log.warning("No user-provided scaling configuration found; using default scaling only."
+                         "If there is a scaling configuration, make sure to import it by import_scaling_config().")
+        
+        
+
+    def _initialize_units(self, scaling_config: ScalingConfig = None):
+        m = self.m
+        #self._apply_user_scaling(scaling_config)
+        iscale.calculate_scaling_factors(m)
+
+        # Initialize units and propagate states
+        m.fs.feed.initialize()
+        propagate_state(m.fs.arc0)
+
+        m.fs.sepa.initialize()
+        propagate_state(m.fs.arc1b)
+
+        m.fs.pump1.deltaP[0].fix(2e5)
+        m.fs.pump1.initialize()
+        m.fs.pump1.deltaP[0].unfix()
+
+        propagate_state(m.fs.arc2b)
+
+        m.fs.pump0.deltaP[0].fix(2e5)
+        m.fs.pump0.initialize()
+        m.fs.pump0.deltaP[0].unfix()
+
+        propagate_state(m.fs.arc1f)
+        propagate_state(m.fs.arc2f)
+
+        m.fs.EDstack.initialize()
+
+        propagate_state(m.fs.arc4)
+        m.fs.prod.initialize()
+
+        propagate_state(m.fs.arc5)
+        m.fs.prod.initialize()
+        m.fs.disp.initialize()
+
+        if hasattr(m.fs, "costing"):
+            m.fs.costing.initialize()
+
+        
+
+        
+    # -----------------------------
     # Optional constraints / objectives / properties
     # -----------------------------
-    def add_prod_tds_constraint(self, tds: float = 2.0):
-        self.m.fs.prod_tds_constraint = Constraint(expr=tds >= self.m.fs.prod_salinity)
+    def add_prod_tds_inequality_constraint(self, tds: float = 2.0):
+        # TDS in product smaller than specified value (kg/m3, NaCl equivalent)
+        self.m.fs.prod_tds_inequality_constraint = Constraint(expr=tds >= self.m.fs.prod_salinity)
+
+    def add_prod_tds_equality_constraint(self, tds: float = 2.0):
+        self.m.fs.prod_tds_equality_constraint = Constraint(expr=tds == self.m.fs.prod_salinity)
 
     def add_sodium_adsorption_ratio(self):
         m = self.m
-        m.fs.sar = Var(
-            initialize=10,
-            domain=NonNegativeReals,
-            units=pyunits.mol ** (1 / 2) * pyunits.m ** -(3 / 2),
-            doc="sodium adsorption ratio",
-        )
-        m.fs.sar_calculation = Constraint(
-            expr=m.fs.sar
-            * (m.fs.prod.properties[0].conc_mol_phase_comp["Liq", "Mg_2+"] + m.fs.prod.properties[0].conc_mol_phase_comp["Liq", "Ca_2+"]) ** 0.5
-            == m.fs.prod.properties[0].conc_mol_phase_comp["Liq", "Na_+"]
-        )
+        m.fs.sar = Expression(expr=m.fs.prod.properties[0].conc_mol_phase_comp["Liq", "Na_+"] * (m.fs.prod.properties[0].conc_mol_phase_comp["Liq", "Mg_2+"] + m.fs.prod.properties[0].conc_mol_phase_comp["Liq", "Ca_2+"]) ** -0.5)
 
-    def add_prod_sar_constraint(self, sar: float = 9.0):
-        self.m.fs.prod_sar_constraint = Constraint(expr=sar >= self.m.fs.sar)
+    def add_prod_sar_inequality_constraint(self, sar: float = 9.0):
+        # SAR in product smaller than specified value
+        self.m.fs.prod_sar_inequality_constraint = Constraint(expr=sar >= self.m.fs.sar)
 
     def add_LCOW_objective(self):
         m = self.m
         if not hasattr(m.fs, "costing"):
             raise AttributeError("Model does not have a costing block.")
         if hasattr(m.fs, "objective"):
+            _log.warning("Replacing existing objective {} with LCOW.".format(m.fs.objective))
             m.del_component(m.fs.objective)
         m.fs.objective = Objective(expr=m.fs.costing.LCOW)
+
 
     # -----------------------------
     # Parameterization / updates
@@ -365,141 +481,7 @@ class OneStageSinglePass:
             print(t_num)
             m.fs.EDstack.ion_trans_number_membrane["cem", ion, :].fix(t_num)
 
-    # -----------------------------
-    # Init / Solve
-    # -----------------------------
-    def initialize_dof0_system(
-        self,
-        solve_after_init: bool = False,
-        terminate_nonoptimal_sol: bool = False,
-        report_bad_scaling: bool = False,
-        initargs=None,
-        linear_solver: str = "ma27",
-        max_iter: int | None = None,
-        tee: bool = True,
-    ):
-        """
-        Initialize at DOF==0, optionally solve immediately.
-        """
-        m = self.m
-        initargs = initargs or {}
-
-        # Essential scaling
-        m.fs.properties.set_default_scaling("flow_mol_phase_comp", 1, index=("Liq", "H2O"))
-        m.fs.properties.set_default_scaling("flow_mol_phase_comp", 2e3, index=("Liq", "Na_+"))
-        m.fs.properties.set_default_scaling("flow_mol_phase_comp", 5e4, index=("Liq", "Mg_2+"))
-        m.fs.properties.set_default_scaling("flow_mol_phase_comp", 2e3, index=("Liq", "Cl_-"))
-        m.fs.properties.set_default_scaling("flow_mol_phase_comp", 1e5, index=("Liq", "Ca_2+"))
-        m.fs.properties.set_default_scaling("flow_vol_phase", 5e4, index=("Liq"))
-
-        iscale.calculate_scaling_factors(m.fs.feed)
-        m.fs.feed.properties.calculate_state(initargs, hold_state=True)
-
-        if mstat.degrees_of_freedom(m) != 0:
-            print(f"None-zero DOF={mstat.degrees_of_freedom(m)}")
-        assert mstat.degrees_of_freedom(m) == 0
-
-        try:
-            self.initialize_system(report_bad_scaling=report_bad_scaling)
-        except Exception as experr:
-            _log.warning(f"Initialization failed in initialize_dof0_system: {experr}")
-
-        if solve_after_init:
-            iscale.calculate_scaling_factors(m)
-            res = self.solve(tee=tee, linear_solver=linear_solver, max_iter=max_iter, check_termination=terminate_nonoptimal_sol)
-            if str(res.solver.termination_condition) != "optimal":
-                _log.warning(
-                    f"{m.name} not solved to optimality after initialization. "
-                    f"Solver termination condition: {res.solver.termination_condition}"
-                )
-            else:
-                _log.info(f"{m.name} solved to optimality after initialization.")
-        else:
-            _log.info("Model initialized at zero dof without solving.")
-
-    def solve(
-        self,
-        solver=None,
-        tee: bool = True,
-        linear_solver: str = "ma27",
-        max_iter: int | None = None,
-        check_termination: bool = False,
-    ):
-        if solver is None:
-            solver = get_solver()
-        solver.options["linear_solver"] = linear_solver
-        if max_iter is not None:
-            solver.options["max_iter"] = max_iter
-        results = solver.solve(self.m, tee=tee)
-        if check_termination:
-            assert_optimal_termination(results)
-        return results
-
-    def initialize_system(self, solver=None, report_bad_scaling: bool = False):
-        m = self.m
-        if solver is None:
-            solver = get_solver()
-        optarg = solver.options
-
-        # Scaling
-        m.fs.properties.set_default_scaling("flow_mol_phase_comp", 1, index=("Liq", "H2O"))
-        m.fs.properties.set_default_scaling("flow_mol_phase_comp", 2e3, index=("Liq", "Na_+"))
-        m.fs.properties.set_default_scaling("flow_mol_phase_comp", 5e4, index=("Liq", "Mg_2+"))
-        m.fs.properties.set_default_scaling("flow_mol_phase_comp", 2e3, index=("Liq", "Cl_-"))
-        m.fs.properties.set_default_scaling("flow_mol_phase_comp", 1e5, index=("Liq", "Ca_2+"))
-        m.fs.properties.set_default_scaling("flow_vol_phase", 5e4, index=("Liq"))
-
-        iscale.set_scaling_factor(m.fs.EDstack.cell_width, 5)
-        iscale.set_scaling_factor(m.fs.EDstack.cell_length, 1)
-        iscale.set_scaling_factor(m.fs.EDstack.cell_pair_num, 0.01)
-        iscale.set_scaling_factor(m.fs.EDstack.voltage_applied, 0.1)
-        iscale.set_scaling_factor(m.fs.EDstack.diluate.power_electrical_x, 1)
-        iscale.set_scaling_factor(m.fs.pump0.control_volume.work, 1e1)
-        iscale.set_scaling_factor(m.fs.pump1.control_volume.work, 1e1)
-        iscale.calculate_scaling_factors(m)
-        iscale.constraint_scaling_transform(
-            m.fs.eq_electrodialysis_equal_flow,
-            10 * iscale.get_scaling_factor(m.fs.feed.properties[0].flow_vol_phase["Liq"]),
-        )
-
-        # Initialize units and propagate states
-        m.fs.feed.initialize(optarg=optarg)
-        propagate_state(m.fs.arc0)
-
-        m.fs.sepa.initialize(optarg=optarg)
-        propagate_state(m.fs.arc1b)
-
-        m.fs.pump1.deltaP[0].fix(2e5)
-        m.fs.pump1.initialize()
-        m.fs.pump1.deltaP[0].unfix()
-
-        propagate_state(m.fs.arc2b)
-
-        m.fs.pump0.deltaP[0].fix(2e5)
-        m.fs.pump0.initialize()
-        m.fs.pump0.deltaP[0].unfix()
-
-        propagate_state(m.fs.arc1f)
-        propagate_state(m.fs.arc2f)
-
-        m.fs.EDstack.initialize(optarg=optarg)
-
-        propagate_state(m.fs.arc4)
-        m.fs.prod.initialize(optarg=optarg)
-
-        propagate_state(m.fs.arc5)
-        m.fs.prod.initialize(optarg=optarg)
-        m.fs.disp.initialize()
-
-        if hasattr(m.fs, "costing"):
-            m.fs.costing.initialize()
-
-        iscale.calculate_scaling_factors(m)
-        if report_bad_scaling:
-            print("BADLY SCALED VARS & CONSTRAINTS")
-            badly_scaled_var_values = {var.name: val for (var, val) in iscale.badly_scaled_var_generator(m)}
-            for j, k in badly_scaled_var_values.items():
-                print(j, ":", k)
+    
 
     # -----------------------------
     # Variable utilities

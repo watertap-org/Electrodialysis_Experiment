@@ -1,0 +1,83 @@
+InitialValue:  
+  variables:
+    # --- feed and product ---
+    - scalarVar: fs.feed.properties[0].pressure
+      value: 101325
+    - scalarVar: fs.feed.properties[0].temperature
+      value: 298.15
+
+    - scalarVar: fs.prod.properties[0].pressure
+      value: 101325
+    - scalarVar: fs.disp.properties[0].pressure
+      value: 101325
+
+    # --- pumps ---
+    - scalarVar: fs.pump0.efficiency_pump
+      value: 0.8
+    - scalarVar: fs.pump1.efficiency_pump
+      value: 0.8
+
+    # --- ED stack ---
+    - scalarVar: fs.experimental_voltage
+      value: 10
+    - scalarVar: fs.ocv
+      value: 4.35
+    - scalarVar: fs.EDstack.pressure_drop
+      value: 150000
+    - scalarVar: fs.EDstack.cell_pair_num
+      value: 10
+    - scalarVar: fs.EDstack.channel_height
+      value: 7.6e-4
+    - scalarVar: fs.EDstack.cell_width
+      value: 0.047
+    - scalarVar: fs.EDstack.cell_length
+      value: 0.47
+    - scalarVar: fs.EDstack.spacer_porosity
+      value: 0.83
+    - scalarVar: fs.EDstack.spacer_conductivity_coefficient
+      value: 0.83
+    - scalarVar: fs.EDstack.electrodes_resistance
+      value: 0
+    - scalarVar: fs.EDstack.slack_resistance
+      value: 0
+    - scalarVar: fs.EDstack.current_utilization
+      value: 1
+    - scalarVar: fs.EDstack.diffus_mass
+      value: 1.6e-9
+
+    # --- indexed membrane properties (indexedVar + items) ---
+    - indexedVar: fs.EDstack.water_trans_number_membrane
+      items:
+        - index: ["cem"]
+          value: 5.8
+        - index: ["aem"]
+          value: 4.3
+
+    - indexedVar: fs.EDstack.water_permeability_membrane
+      items:
+        - index: ["cem"]
+          value: 2.16e-14
+        - index: ["aem"]
+          value: 1.75e-14
+
+    - indexedVar: fs.EDstack.membrane_areal_resistance_const
+      items:
+        - index: ["cem"]
+          value: 1.0e-3
+        - index: ["aem"]
+          value: 2.2e-3
+
+    - indexedVar: fs.EDstack.membrane_areal_resistance_coef
+      items:
+        - index: ["cem"]
+          value: 0.03
+        - index: ["aem"]
+          value: 0.03
+
+    - indexedVar: fs.EDstack.membrane_thickness
+      items:
+        - index: ["aem"]
+          value: 6.35e-4
+        - index: ["cem"]
+          value: 5.7e-4
+
