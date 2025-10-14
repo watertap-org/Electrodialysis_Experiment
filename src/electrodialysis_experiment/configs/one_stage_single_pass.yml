@@ -1,5 +1,5 @@
 ed_stack:
-  finite_elements: 100
+  finite_elements: 2
   has_pressure_change: true
   pressure_drop_method: experimental
   friction_factor_method: fixed
@@ -11,7 +11,7 @@ ed_stack:
   limiting_current_density_data: 500
 
 ion:
-  solute_list: ["Na_+", "Ca_2+", "Mg_2+", "Cl_-", "SO4_2-"]
+  solute_list: ["Na_+", "Ca_2+", "Mg_2+", "Cl_-"]
   mw_data:
     H2O: 0.018
     Na_+: 0.023
@@ -33,8 +33,8 @@ ion:
 solution:
   electrical_mobility_calculation: EinsteinRelation
   equivalent_conductivity_calculation: Onsager_Falkenhagen
-  equiv_conductivity_phase_data:
-    Liq: 0.01
+  # equiv_conductivity_phase_data:
+  #   Liq: 0.01
 
 process:
   build_costing: false

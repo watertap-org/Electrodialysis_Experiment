@@ -36,7 +36,7 @@ import idaes.core.util.model_statistics as mstat
 from idaes.models.unit_models import Feed, Product, Separator
 from watertap.unit_models.pressure_changer import Pump
 import pandas as pd
-import numpy as np  
+import numpy as np
 import idaes.core.util.scaling as iscale
 import idaes.logger as idaeslogger
 
@@ -44,7 +44,7 @@ from electrodialysis_experiment.processes.base import (
     ED_base,
 )
 
-from electrodialysis_experiment.utils.user_scaling import apply_scaling
+from electrodialysis_experiment.utils.user_scaling import apply_scaling_from_yaml
 
 from watertap.costing.watertap_costing_package import WaterTAPCosting
 
@@ -56,7 +56,8 @@ from electrodialysis_experiment.configs.process_config_schema import (
     OneStageSinglePassConfig,
 )
 from electrodialysis_experiment.configs.scaling_schema import ScalingConfig
-
+from electrodialysis_experiment.utils.value_setting import apply_value_updates_from_yaml
+from electrodialysis_experiment.schema.data import FluidCondition
 
 
 _log = idaeslogger.getIdaesLogger(__name__)
@@ -68,34 +69,26 @@ class OneStageSinglePass:
     """
 
     @classmethod
-    def from_yaml(cls, path: str | Path) -> "OneStageSinglePass":
+    def from_yaml(cls, path: str | Path, name: str = "Unnamed") -> "OneStageSinglePass":
         with open(path, "r") as f:
             data = yaml.safe_load(f) or {}
         cfg = OneStageSinglePassConfig(**data)
-        return cls(cfg) ## TODO: consdier passing only configs provided in YAML to bypass the default values in the schema; maybe not necessary
-    
-    @classmethod
-    def import_scaling_config(cls, path: str | Path) -> ScalingConfig:
-        with open(path, "r") as f:
-            raw = yaml.safe_load(f) or {}
-        data = raw.get("scaling", {})
-        cfg = ScalingConfig(**data)
-        return cfg
+        return cls(
+            cfg, name=name
+        )  ## TODO: consdier passing only configs provided in YAML to bypass the default values in the schema; maybe not necessary
 
-    def __init__(self, cfg: OneStageSinglePassConfig, scaling_cfg: ScalingConfig = None):
+    def __init__(self, cfg: OneStageSinglePassConfig, name: str = "Unnamed"):
         """
-        Create a one-stage single-pass ED flowsheet.
+         Create a one-stage single-pass ED flowsheet.
 
-        Parameters
-        ----------
-       cfg : OneStageSinglePassConfig
-            Validated configuration (can be created via from_yaml()).
+         Parameters
+         ----------
+        cfg : OneStageSinglePassConfig
+             Validated configuration (can be created via from_yaml()).
         """
         self.config = cfg
-        if scaling_cfg is not None:
-            self.scaling_config = scaling_cfg
         # Pyomo model and IDAES flowsheet shell
-        self.m = ConcreteModel()
+        self.m = ConcreteModel(name=name)
         self.m.fs = FlowsheetBlock(dynamic=False)
         # Model details
         self._build_properties()
@@ -114,7 +107,6 @@ class OneStageSinglePass:
             "solute_list": ion.solute_list,
             "mw_data": ion.mw_data,
             "charge": ion.charge,
-            # toggles/models
             "elec_mobility_calculation": sol.electrical_mobility_calculation,
             "equiv_conductivity_calculation": sol.equivalent_conductivity_calculation,
         }
@@ -126,7 +118,9 @@ class OneStageSinglePass:
         if ion.trans_num_data is not None:
             mcas_kwargs["trans_num_data"] = ion.trans_num_data
         if sol.equiv_conductivity_phase_data is not None:
-            mcas_kwargs["equiv_conductivity_phase_data"] = sol.equiv_conductivity_phase_data
+            mcas_kwargs["equiv_conductivity_phase_data"] = (
+                sol.equiv_conductivity_phase_data
+            )
 
         m.fs.properties = MCASParameterBlock(**mcas_kwargs)
 
@@ -135,7 +129,9 @@ class OneStageSinglePass:
         ed_config = self.config.ed_stack
 
         m.fs.feed = Feed(property_package=m.fs.properties)
-        m.fs.sepa = Separator(property_package=m.fs.properties, outlet_list=["to_dil_in", "to_conc_in"])
+        m.fs.sepa = Separator(
+            property_package=m.fs.properties, outlet_list=["to_dil_in", "to_conc_in"]
+        )
 
         # Pumps
         m.fs.pump0 = Pump(property_package=m.fs.properties)
@@ -188,14 +184,20 @@ class OneStageSinglePass:
     def _build_costing(self):
         m = self.m
         m.fs.costing = WaterTAPCosting()
-        m.fs.EDstack.costing = UnitModelCostingBlock(flowsheet_costing_block=m.fs.costing)
+        m.fs.EDstack.costing = UnitModelCostingBlock(
+            flowsheet_costing_block=m.fs.costing
+        )
         m.fs.pump0.costing = UnitModelCostingBlock(flowsheet_costing_block=m.fs.costing)
         m.fs.pump1.costing = UnitModelCostingBlock(flowsheet_costing_block=m.fs.costing)
 
         m.fs.costing.cost_process()
-        m.fs.costing.add_annual_water_production(m.fs.prod.properties[0].flow_vol_phase["Liq"])
+        m.fs.costing.add_annual_water_production(
+            m.fs.prod.properties[0].flow_vol_phase["Liq"]
+        )
         m.fs.costing.add_LCOW(m.fs.prod.properties[0].flow_vol)
-        m.fs.costing.add_specific_energy_consumption(m.fs.prod.properties[0].flow_vol_phase["Liq"])
+        m.fs.costing.add_specific_energy_consumption(
+            m.fs.prod.properties[0].flow_vol_phase["Liq"]
+        )
 
     def _add_expressions_and_constraints(self):
         m = self.m
@@ -215,77 +217,111 @@ class OneStageSinglePass:
 
         # Stack voltages
         m.fs.experimental_voltage = Var(
-            initialize=100, bounds=(0, 1000), units=pyunits.volt, doc="Stack voltage measured in a batch experiment"
+            initialize=100,
+            bounds=(0, 1000),
+            units=pyunits.volt,
+            doc="Stack voltage measured in a batch experiment",
         )
-        m.fs.ocv = Var(initialize=0, bounds=(0, 1000), units=pyunits.volt, doc="Stack open circuit voltage")
-        m.fs.eq_experimental_voltage = Constraint(expr=m.fs.experimental_voltage == m.fs.ocv + m.fs.EDstack.voltage_applied[0])
+        m.fs.ocv = Var(
+            initialize=0,
+            bounds=(0, 1000),
+            units=pyunits.volt,
+            doc="Stack open circuit voltage",
+        )
+        m.fs.eq_experimental_voltage = Constraint(
+            expr=m.fs.experimental_voltage == m.fs.ocv + m.fs.EDstack.voltage_applied[0]
+        )
 
         # NaCl-equivalent salinity calculations (cation-based weighting)
         m.fs.feed_salinity = Expression(
             expr=sum(
-                m.fs.feed.properties[0].conc_mol_phase_comp["Liq", j] * (58.5e-3 * m.fs.prod.properties[0].charge_comp[j])
+                m.fs.feed.properties[0].conc_mol_phase_comp["Liq", j]
+                * (58.5e-3 * m.fs.prod.properties[0].charge_comp[j])
                 for j in m.fs.properties.cation_set
             )
         )
         m.fs.prod_salinity = Expression(
             expr=sum(
-                m.fs.prod.properties[0].conc_mol_phase_comp["Liq", j] * (58.5e-3 * m.fs.prod.properties[0].charge_comp[j])
+                m.fs.prod.properties[0].conc_mol_phase_comp["Liq", j]
+                * (58.5e-3 * m.fs.prod.properties[0].charge_comp[j])
                 for j in m.fs.properties.cation_set
             )
         )
         m.fs.disp_salinity = Expression(
             expr=sum(
-                m.fs.disp.properties[0].conc_mol_phase_comp["Liq", j] * (58.5e-3 * m.fs.disp.properties[0].charge_comp[j])
+                m.fs.disp.properties[0].conc_mol_phase_comp["Liq", j]
+                * (58.5e-3 * m.fs.disp.properties[0].charge_comp[j])
                 for j in m.fs.properties.cation_set
             )
         )
 
         # Areas, voltages, current density
-        m.fs.mem_area = Expression(expr=m.fs.EDstack.cell_width * m.fs.EDstack.cell_length * m.fs.EDstack.cell_pair_num)
-        m.fs.voltage_per_cp = Expression(expr=m.fs.EDstack.voltage_applied[0] / m.fs.EDstack.cell_pair_num)
+        m.fs.mem_area = Expression(
+            expr=m.fs.EDstack.cell_width
+            * m.fs.EDstack.cell_length
+            * m.fs.EDstack.cell_pair_num
+        )
+        m.fs.voltage_per_cp = Expression(
+            expr=m.fs.EDstack.voltage_applied[0] / m.fs.EDstack.cell_pair_num
+        )
         m.fs.current_density_avg = Expression(
             expr=m.fs.EDstack.diluate.power_electrical_x[0, 1]
-            / (m.fs.EDstack.voltage_applied[0] * m.fs.EDstack.cell_width * m.fs.EDstack.cell_length)
+            / (
+                m.fs.EDstack.voltage_applied[0]
+                * m.fs.EDstack.cell_width
+                * m.fs.EDstack.cell_length
+            )
         )
 
     def _wire_arcs(self):
         m = self.m
         m.fs.arc0 = Arc(source=m.fs.feed.outlet, destination=m.fs.sepa.inlet)
         m.fs.arc1b = Arc(source=m.fs.sepa.to_dil_in, destination=m.fs.pump1.inlet)
-        m.fs.arc1f = Arc(source=m.fs.pump1.outlet, destination=m.fs.EDstack.inlet_diluate)
+        m.fs.arc1f = Arc(
+            source=m.fs.pump1.outlet, destination=m.fs.EDstack.inlet_diluate
+        )
         m.fs.arc2b = Arc(source=m.fs.sepa.to_conc_in, destination=m.fs.pump0.inlet)
-        m.fs.arc2f = Arc(source=m.fs.pump0.outlet, destination=m.fs.EDstack.inlet_concentrate)
+        m.fs.arc2f = Arc(
+            source=m.fs.pump0.outlet, destination=m.fs.EDstack.inlet_concentrate
+        )
         m.fs.arc4 = Arc(source=m.fs.EDstack.outlet_diluate, destination=m.fs.prod.inlet)
-        m.fs.arc5 = Arc(source=m.fs.EDstack.outlet_concentrate, destination=m.fs.disp.inlet)
+        m.fs.arc5 = Arc(
+            source=m.fs.EDstack.outlet_concentrate, destination=m.fs.disp.inlet
+        )
         TransformationFactory("network.expand_arcs").apply_to(m)
 
-    # -----------------------------
-    # Init / Solve
-    # -----------------------------
+    def import_scaling_config(self, path: str | Path):
+        apply_scaling_from_yaml(self.m, path)
+
+    def import_init_value_config(self, path: str | Path):
+        apply_value_updates_from_yaml(self.m, path)
+
     def initialize_process(
         self,
-        scaling_config: ScalingConfig = None,
         solve_after_init: bool = True,
-        initargs=None,
+        fluid_condition: FluidCondition = None,
     ):
         """
         Initialize at DOF==0, optionally solve immediately.
         """
         m = self.m
-        self._apply_user_scaling(scaling_config)
         iscale.calculate_scaling_factors(m.fs.feed)
+        initargs = fluid_condition.get_state_dict()
         m.fs.feed.properties.calculate_state(initargs, hold_state=True)
         dof = mstat.degrees_of_freedom(m)
         _log.info(f"The process is being intialized at DOF = {dof}.")
         try:
-            self._initialize_units(scaling_config) 
+            self._initialize_units()
         except Exception as experr:
             _log.warning(f"Initialization failed at the unit level: {experr}")
 
         if solve_after_init:
             iscale.constraint_scaling_transform(
                 m.fs.eq_electrodialysis_equal_flow,
-                10 * iscale.get_scaling_factor(m.fs.feed.properties[0].flow_vol_phase["Liq"]),
+                10
+                * iscale.get_scaling_factor(
+                    m.fs.feed.properties[0].flow_vol_phase["Liq"]
+                ),
             )
             iscale.calculate_scaling_factors(m)
             res = self.solve(m)
@@ -295,47 +331,37 @@ class OneStageSinglePass:
                     f"Solver termination condition: {res.solver.termination_condition}"
                 )
             else:
-                _log.info(f"Process {m.name} yielded optimal solution at the initial point.")
+                _log.info(
+                    f"Process {m.name} yielded optimal solution at the initial point."
+                )
         else:
-            _log.info(f"Process {m.name} was set at an estimated initial point determined at the unit level and not solved as a whole.")
+            _log.info(
+                f"Process {m.name} was set at an estimated initial point determined at the unit level and not solved as a whole."
+            )
 
-    
-    @classmethod
     def solve(
-        cls,
+        self,
         model,
         solver=None,
     ):
         if solver is None:
             solver = get_solver()
-        pc = cls.cfg.process
+        pc = self.config.process
         tee = pc.tee if pc.tee is not None else True
-        ipopt_cfg = cls.config.ipopt
+        ipopt_cfg = self.config.ipopt
         for k, v in ipopt_cfg.model_dump().items():
             if v is not None:
                 _log.info(f"Setting IPOPT option {k} = {v}")
                 if solver is not None:
                     solver.options[k] = v
         results = solver.solve(model, tee=tee)
-        _log.info(f"Solved model: {model.name}; solver termination condition: {results.solver.termination_condition}")
+        _log.info(
+            f"Solved model: {model.name}; solver termination condition: {results.solver.termination_condition}"
+        )
         return results
-    
-    def _apply_user_scaling(self, scaling_config: ScalingConfig = None):
-        # Scaling
-        m = self.m
 
-        if  scaling_config is not None:
-            apply_scaling(m, scaling_config)
-            _log.info("Applied user-provided scaling configuration.")
-
-        else:
-            _log.warning("No user-provided scaling configuration found; using default scaling only."
-                         "If there is a scaling configuration, make sure to import it by import_scaling_config().")
-        
-        
-    def _initialize_units(self, scaling_config: ScalingConfig = None):
+    def _initialize_units(self):
         m = self.m
-        #self._apply_user_scaling(scaling_config)
         iscale.calculate_scaling_factors(m)
 
         # Initialize units and propagate states
@@ -369,20 +395,28 @@ class OneStageSinglePass:
 
         if hasattr(m.fs, "costing"):
             m.fs.costing.initialize()
-        
-    # -----------------------------
-    # Optional constraints / objectives / properties
-    # -----------------------------
+
     def add_prod_tds_inequality_constraint(self, tds: float = 2.0):
         # TDS in product smaller than specified value (kg/m3, NaCl equivalent)
-        self.m.fs.prod_tds_inequality_constraint = Constraint(expr=tds >= self.m.fs.prod_salinity)
+        self.m.fs.prod_tds_inequality_constraint = Constraint(
+            expr=tds >= self.m.fs.prod_salinity
+        )
 
     def add_prod_tds_equality_constraint(self, tds: float = 2.0):
-        self.m.fs.prod_tds_equality_constraint = Constraint(expr=tds == self.m.fs.prod_salinity)
+        self.m.fs.prod_tds_equality_constraint = Constraint(
+            expr=tds == self.m.fs.prod_salinity
+        )
 
     def add_sodium_adsorption_ratio(self):
         m = self.m
-        m.fs.sar = Expression(expr=m.fs.prod.properties[0].conc_mol_phase_comp["Liq", "Na_+"] * (m.fs.prod.properties[0].conc_mol_phase_comp["Liq", "Mg_2+"] + m.fs.prod.properties[0].conc_mol_phase_comp["Liq", "Ca_2+"]) ** -0.5)
+        m.fs.sar = Expression(
+            expr=m.fs.prod.properties[0].conc_mol_phase_comp["Liq", "Na_+"]
+            * (
+                m.fs.prod.properties[0].conc_mol_phase_comp["Liq", "Mg_2+"]
+                + m.fs.prod.properties[0].conc_mol_phase_comp["Liq", "Ca_2+"]
+            )
+            ** -0.5
+        )
 
     def add_prod_sar_inequality_constraint(self, sar: float = 9.0):
         # SAR in product smaller than specified value
@@ -393,14 +427,12 @@ class OneStageSinglePass:
         if not hasattr(m.fs, "costing"):
             raise AttributeError("Model does not have a costing block.")
         if hasattr(m.fs, "objective"):
-            _log.warning("Replacing existing objective {} with LCOW.".format(m.fs.objective))
+            _log.warning(
+                "Replacing existing objective {} with LCOW.".format(m.fs.objective)
+            )
             m.del_component(m.fs.objective)
         m.fs.objective = Objective(expr=m.fs.costing.LCOW)
 
-
-    # -----------------------------
-    # Parameterization / updates
-    # -----------------------------
     @staticmethod
     def update_cation_cem_transport_number(self, t_cation_cem_dict: dict):
         m = self.m
@@ -429,9 +461,7 @@ class OneStageSinglePass:
             else:
                 update_dict = updates.dict()
         else:
-            raise TypeError(
-                f"Expected dict or BaseModel, got {type(updates).__name__}"
-            )
+            raise TypeError(f"Expected dict or BaseModel, got {type(updates).__name__}")
 
         m = self.m
         for var_name, val in update_dict.items():
@@ -471,22 +501,44 @@ class OneStageSinglePass:
         m = self.m
 
         print("---Flow properties in feed, product and disposal---")
-        feed_conc_list = [value(m.fs.feed.properties[0].flow_vol_phase["Liq"]), value(m.fs.feed_salinity)]
+        feed_conc_list = [
+            value(m.fs.feed.properties[0].flow_vol_phase["Liq"]),
+            value(m.fs.feed_salinity),
+        ]
         for i in ion_list:
-            feed_conc_list.append(value(m.fs.feed.properties[0].conc_mol_phase_comp["Liq", i]))
+            feed_conc_list.append(
+                value(m.fs.feed.properties[0].conc_mol_phase_comp["Liq", i])
+            )
 
-        prod_conc_list = [value(m.fs.prod.properties[0].flow_vol_phase["Liq"]), value(m.fs.prod_salinity)]
+        prod_conc_list = [
+            value(m.fs.prod.properties[0].flow_vol_phase["Liq"]),
+            value(m.fs.prod_salinity),
+        ]
         for i in ion_list:
-            prod_conc_list.append(value(m.fs.prod.properties[0].conc_mol_phase_comp["Liq", i]))
+            prod_conc_list.append(
+                value(m.fs.prod.properties[0].conc_mol_phase_comp["Liq", i])
+            )
 
-        disp_conc_list = [value(m.fs.disp.properties[0].flow_vol_phase["Liq"]), value(m.fs.disp_salinity)]
+        disp_conc_list = [
+            value(m.fs.disp.properties[0].flow_vol_phase["Liq"]),
+            value(m.fs.disp_salinity),
+        ]
         for i in ion_list:
-            disp_conc_list.append(value(m.fs.disp.properties[0].conc_mol_phase_comp["Liq", i]))
+            disp_conc_list.append(
+                value(m.fs.disp.properties[0].conc_mol_phase_comp["Liq", i])
+            )
 
         fp_table = pd.DataFrame(
-            data={"Feed": feed_conc_list, "Product": prod_conc_list, "Disposal": disp_conc_list},
-            index=["Volume Flow Rate (m3/s)", "Total Dissolved Solids (kg/m3, NaCl eqv)"]
-                  + [f"{i} Molar Conc. (mol/m^3)" for i in ion_list]
+            data={
+                "Feed": feed_conc_list,
+                "Product": prod_conc_list,
+                "Disposal": disp_conc_list,
+            },
+            index=[
+                "Volume Flow Rate (m3/s)",
+                "Total Dissolved Solids (kg/m3, NaCl eqv)",
+            ]
+            + [f"{i} Molar Conc. (mol/m^3)" for i in ion_list],
         )
         print(fp_table)
 
@@ -520,27 +572,53 @@ class OneStageSinglePass:
 
         print("---Pressure and Temperature point checking---")
         pt_dict = {
-            "Feed": (value(m.fs.feed.outlet.pressure[0]), value(m.fs.feed.outlet.temperature[0])),
-            "Pump0_in": (value(m.fs.pump0.inlet.pressure[0]), value(m.fs.pump0.inlet.temperature[0])),
-            "Pump1_in": (value(m.fs.pump1.inlet.pressure[0]), value(m.fs.pump1.inlet.temperature[0])),
-            "Pump0_out": (value(m.fs.pump0.outlet.pressure[0]), value(m.fs.pump0.outlet.temperature[0])),
-            "Pump1_out": (value(m.fs.pump1.outlet.pressure[0]), value(m.fs.pump1.outlet.temperature[0])),
-            "ED_in_dil": (value(m.fs.EDstack.inlet_diluate.pressure[0]), value(m.fs.EDstack.inlet_diluate.temperature[0])),
-            "ED_in_conc": (value(m.fs.EDstack.inlet_concentrate.pressure[0]), value(m.fs.EDstack.inlet_concentrate.temperature[0])),
-            "ED_out_dil": (value(m.fs.EDstack.outlet_diluate.pressure[0]), value(m.fs.EDstack.outlet_diluate.temperature[0])),
-            "ED_out_conc": (value(m.fs.EDstack.outlet_concentrate.pressure[0]), value(m.fs.EDstack.outlet_concentrate.temperature[0])),
-            "Prod": (value(m.fs.prod.inlet.pressure[0]), value(m.fs.prod.inlet.temperature[0])),
-            "Disp": (value(m.fs.disp.inlet.pressure[0]), value(m.fs.disp.inlet.temperature[0])),
+            "Feed": (
+                value(m.fs.feed.outlet.pressure[0]),
+                value(m.fs.feed.outlet.temperature[0]),
+            ),
+            "Pump0_in": (
+                value(m.fs.pump0.inlet.pressure[0]),
+                value(m.fs.pump0.inlet.temperature[0]),
+            ),
+            "Pump1_in": (
+                value(m.fs.pump1.inlet.pressure[0]),
+                value(m.fs.pump1.inlet.temperature[0]),
+            ),
+            "Pump0_out": (
+                value(m.fs.pump0.outlet.pressure[0]),
+                value(m.fs.pump0.outlet.temperature[0]),
+            ),
+            "Pump1_out": (
+                value(m.fs.pump1.outlet.pressure[0]),
+                value(m.fs.pump1.outlet.temperature[0]),
+            ),
+            "ED_in_dil": (
+                value(m.fs.EDstack.inlet_diluate.pressure[0]),
+                value(m.fs.EDstack.inlet_diluate.temperature[0]),
+            ),
+            "ED_in_conc": (
+                value(m.fs.EDstack.inlet_concentrate.pressure[0]),
+                value(m.fs.EDstack.inlet_concentrate.temperature[0]),
+            ),
+            "ED_out_dil": (
+                value(m.fs.EDstack.outlet_diluate.pressure[0]),
+                value(m.fs.EDstack.outlet_diluate.temperature[0]),
+            ),
+            "ED_out_conc": (
+                value(m.fs.EDstack.outlet_concentrate.pressure[0]),
+                value(m.fs.EDstack.outlet_concentrate.temperature[0]),
+            ),
+            "Prod": (
+                value(m.fs.prod.inlet.pressure[0]),
+                value(m.fs.prod.inlet.temperature[0]),
+            ),
+            "Disp": (
+                value(m.fs.disp.inlet.pressure[0]),
+                value(m.fs.disp.inlet.temperature[0]),
+            ),
         }
-        pt_table = pd.DataFrame(data=pt_dict, index=["Pressure (Pa)", "Temperature (K)"])
+        pt_table = pd.DataFrame(
+            data=pt_dict, index=["Pressure (Pa)", "Temperature (K)"]
+        )
         pd.set_option("display.max_columns", None)
         print(pt_table)
-
-        for i, c in m.fs.trans_num_ce_calc.items():
-            print(f"Calculated transport number of {i} is {value(c)}.")
-        if hasattr(m.fs, "sar"):
-            m.fs.sar.pprint()
-
-
-
-

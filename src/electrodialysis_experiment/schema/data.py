@@ -12,6 +12,16 @@ class FluidCondition(BaseModel):
     flow_vol_phase: Dict[str, float]  # e.g., {"Liq": 1e-5}
     conc_mol_phase_comp: Dict[Tuple[str, str], float]  # e.g., {("Liq", "Na_+"): 0.1}
 
+    def get_state_dict(self) -> Dict:
+        """
+        Convert this FluidCondition instance into a format
+        compatible with calculate_state.
+        """
+        entry = {("flow_vol_phase", ("Liq",)): self.flow_vol_phase["Liq"]}
+        for (phase, comp), conc in self.conc_mol_phase_comp.items():
+            entry[("conc_mol_phase_comp", (phase, comp))] = conc
+        return entry
+
 
 class UpdateParam(BaseModel):
     experimental_voltage: float

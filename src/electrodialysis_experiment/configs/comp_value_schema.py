@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field, ConfigDict
 
 Number = Union[int, float]
 
+
 class IndexedVarItem(BaseModel):
     """
     One (index, value) pair for an indexed variable.
@@ -11,8 +12,10 @@ class IndexedVarItem(BaseModel):
       - scalar (0, "Liq", "aem")
       - a YAML list for tuples: ["Liq", "Na_+"]
     """
+
     index: Union[str, int, float, List[Union[str, int, float]]]
     value: Number
+
 
 class VarAssignment(BaseModel):
     """
@@ -21,6 +24,7 @@ class VarAssignment(BaseModel):
       2) base + items     (base points to an IndexedVar; items provide per-index values)
       3) mode: "fix" (default), "set", or "unfix"
     """
+
     model_config = ConfigDict(extra="forbid")
 
     # Form 1: target path possibly with indices
@@ -37,11 +41,12 @@ class VarAssignment(BaseModel):
     #  - unfix: var.unfix()
     mode: str = Field(default="fix")
 
+
 class VarValueConfig(BaseModel):
     """
     Top-level variable value  config: a list of assignments.
     """
+
     model_config = ConfigDict(extra="forbid")
 
     variables: List[VarAssignment] = Field(default_factory=list)
-
