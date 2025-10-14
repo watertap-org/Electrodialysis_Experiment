@@ -52,12 +52,11 @@ from electrodialysis_experiment.processes.solution import MCASParameterBlock
 from pathlib import Path
 import yaml
 
-from electrodialysis_experiment.configs.process_config_schema import (
+from electrodialysis_experiment.schema.config.process_config_schema import (
     OneStageSinglePassConfig,
 )
-from electrodialysis_experiment.configs.scaling_schema import ScalingConfig
 from electrodialysis_experiment.utils.value_setting import apply_value_updates_from_yaml
-from electrodialysis_experiment.schema.data import FluidCondition
+from electrodialysis_experiment.schema.experiment.data import FluidCondition
 
 
 _log = idaeslogger.getIdaesLogger(__name__)

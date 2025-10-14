@@ -3,7 +3,7 @@ import re
 import yaml
 import idaes.core.util.scaling as iscale
 import idaes.logger as idaeslogger
-from electrodialysis_experiment.configs.scaling_schema import ScalingConfig
+from electrodialysis_experiment.schema.config.scaling_schema import ScalingConfig
 
 _log = idaeslogger.getIdaesLogger(__name__)
 

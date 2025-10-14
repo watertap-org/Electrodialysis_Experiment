@@ -1,10 +1,10 @@
 from electrodialysis_experiment.processes.one_stage_single_pass import (
     OneStageSinglePass,
 )
-from electrodialysis_experiment.configs.process_config_schema import (
+from electrodialysis_experiment.schema.config.process_config_schema import (
     OneStageSinglePassConfig,
 )
-import electrodialysis_experiment.schema.data as dt
+import electrodialysis_experiment.schema.experiment.data as dt
 import pandas as pd
 
 

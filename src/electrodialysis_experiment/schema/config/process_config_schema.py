@@ -37,8 +37,6 @@ def validate_enum(cls: type[subenum]) -> subenum:
 class ProcessConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
     build_costing: bool = False
-    # solver_linear: str = "ma27"
-    # solver_max_iter: Optional[int] = None
     tee: bool = True
     output_dir: Optional[str] = None
 

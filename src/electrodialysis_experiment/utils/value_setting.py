@@ -30,7 +30,7 @@ import re
 import yaml
 from pydantic import ValidationError
 
-from electrodialysis_experiment.configs.comp_value_schema import (
+from electrodialysis_experiment.schema.config.comp_value_schema import (
     VarAssignment,
     VarValueConfig,
 )
