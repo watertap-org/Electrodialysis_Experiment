@@ -17,6 +17,7 @@
 from __future__ import annotations
 from pyomo.environ import (
     ConcreteModel,
+    Block,
     Var,
     value,
     Constraint,
@@ -28,6 +29,7 @@ from pyomo.environ import (
     NonNegativeReals,
 )
 from pyomo.network import Arc
+from typing import Union, Mapping, TypeVar
 
 from idaes.core import FlowsheetBlock, UnitModelCostingBlock
 from idaes.core.solvers import get_solver
@@ -395,52 +397,55 @@ class OneStageSinglePass:
         if hasattr(m.fs, "costing"):
             m.fs.costing.initialize()
 
-    def add_prod_tds_inequality_constraint(self, tds: float = 2.0):
+    @staticmethod
+    def add_prod_tds_inequality_constraint(model: Union[ConcreteModel, Block] = None, tds: float = 2.0):
         # TDS in product smaller than specified value (kg/m3, NaCl equivalent)
-        self.m.fs.prod_tds_inequality_constraint = Constraint(
-            expr=tds >= self.m.fs.prod_salinity
+        if model is None:
+            model = self.m
+        model.fs.prod_tds_inequality_constraint = Constraint(
+            expr=tds >= model.fs.prod_salinity
         )
 
-    def add_prod_tds_equality_constraint(self, tds: float = 2.0):
-        self.m.fs.prod_tds_equality_constraint = Constraint(
-            expr=tds == self.m.fs.prod_salinity
+    @staticmethod
+    def add_prod_tds_equality_constraint(model: Union[ConcreteModel, Block] = None, tds: float = 2.0):
+        # TDS in product equal to specified value (kg/m3, NaCl equivalent)
+        model.fs.prod_tds_equality_constraint = Constraint(
+            expr=tds == model.fs.prod_salinity
         )
-
-    def add_sodium_adsorption_ratio(self):
-        m = self.m
-        m.fs.sar = Expression(
-            expr=m.fs.prod.properties[0].conc_mol_phase_comp["Liq", "Na_+"]
+    @staticmethod
+    def add_sodium_adsorption_ratio(model: Union[ConcreteModel, Block] = None):
+        model.fs.sar = Expression(
+            expr=model.fs.prod.properties[0].conc_mol_phase_comp["Liq", "Na_+"]
             * (
-                m.fs.prod.properties[0].conc_mol_phase_comp["Liq", "Mg_2+"]
-                + m.fs.prod.properties[0].conc_mol_phase_comp["Liq", "Ca_2+"]
+                model.fs.prod.properties[0].conc_mol_phase_comp["Liq", "Mg_2+"]
+                + model.fs.prod.properties[0].conc_mol_phase_comp["Liq", "Ca_2+"]
             )
             ** -0.5
         )
 
-    def add_prod_sar_inequality_constraint(self, sar: float = 9.0):
+    @staticmethod
+    def add_prod_sar_inequality_constraint(model: Union[ConcreteModel, Block] = None, sar: float = 9.0):
         # SAR in product smaller than specified value
-        self.m.fs.prod_sar_inequality_constraint = Constraint(expr=sar >= self.m.fs.sar)
+        model.fs.prod_sar_inequality_constraint = Constraint(expr=sar >= model.fs.sar)
 
-    def add_LCOW_objective(self):
-        m = self.m
-        if not hasattr(m.fs, "costing"):
+    @staticmethod
+    def add_LCOW_objective(model: Union[ConcreteModel, Block] = None):
+        if not hasattr(model.fs, "costing"):
             raise AttributeError("Model does not have a costing block.")
-        if hasattr(m.fs, "objective"):
+        if hasattr(model.fs, "objective"):
             _log.warning(
-                "Replacing existing objective {} with LCOW.".format(m.fs.objective)
+                "Replacing existing objective {} with LCOW.".format(model.fs.objective)
             )
-            m.del_component(m.fs.objective)
-        m.fs.objective = Objective(expr=m.fs.costing.LCOW)
+            model.del_component(model.fs.objective)
+        model.fs.objective = Objective(expr=model.fs.costing.LCOW)
 
     @staticmethod
-    def update_cation_cem_transport_number(self, t_cation_cem_dict: dict):
-        m = self.m
+    def update_cation_cem_transport_number(t_cation_cem_dict: dict, model: Union[ConcreteModel, Block] = None):
         for ion, t_num in t_cation_cem_dict.items():
-            print(t_num)
-            m.fs.EDstack.ion_trans_number_membrane["cem", ion, :].fix(t_num)
+            model.fs.EDstack.ion_trans_number_membrane["cem", ion, :].fix(t_num)
 
     @staticmethod
-    def update_var_values(self, updates: dict | BaseModel) -> None:
+    def update_var_values(updates: dict | BaseModel, model: Union[ConcreteModel, Block] = None) -> None:
         """
         Update variable values in the model.
 
@@ -462,9 +467,9 @@ class OneStageSinglePass:
         else:
             raise TypeError(f"Expected dict or BaseModel, got {type(updates).__name__}")
 
-        m = self.m
+       
         for var_name, val in update_dict.items():
-            var = self.search_var_by_name(m, var_name)
+            var = __class__.search_var_by_name(model, var_name)
             if var is None:
                 raise KeyError(f"Variable '{var_name}' not found in model.")
 
@@ -481,7 +486,7 @@ class OneStageSinglePass:
                 var.fix(val)
 
     @staticmethod
-    def search_var_by_name(model, var_name: str):
+    def search_var_by_name(model: Union[ConcreteModel, Block], var_name: str):
         var_candidates = []
         for var in model.component_objects(Var, descend_into=True):
             if var_name in str(var.name):
