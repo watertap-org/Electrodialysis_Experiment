@@ -19,27 +19,41 @@ from electrodialysis_experiment.surrogates.transport_number_membrane.cation_cem_
     CationCemTransportNumberSimulator,
     SurrogateType,
 )
-from typing import List, Dict, Tuple, Union
+from typing import List, Dict, Tuple, Union, TypeVar
+from electrodialysis_experiment.processes.one_stage_single_pass import OneStageSinglePass
+from electrodialysis_experiment.schema.config.process_config_schema import OneStageSinglePassConfig
+from pydantic import BaseModel
+from pathlib import Path
+import yaml
 
 _author_ = "Xiangyu Bi"
 _log = log.getLogger(__name__)
 
+ProcConfig = TypeVar("ProcConfig", bound=BaseModel)
 
 class MasterExperimentBuilder:
-    def __init__(self, ion: Dict, sample_size: int = 1, finite_diff_elements: int = 20):
-        self.ion = ion
-        self.sample_size = sample_size
-        self.model = pyo.ConcreteModel()
-        self._build_model(finite_diff_elements=finite_diff_elements)
 
-    def _build_model(self, finite_diff_elements: int = 20):
-        def _prepare_edsp_blk(b):
-            m = edsp.build(finite_element=finite_diff_elements, **self.ion)
-            edsp.add_sodium_adsorption_ratio(m)
-            b.transfer_attributes_from(m)
+    @classmethod
+    def proc_config_from_yaml(cls, path: str | Path, sample_size: int = 1, name: str = "UnnamedExperiment"):
+        with open(path, "r") as f:
+            config_data = yaml.safe_load(f)
+        process_config = OneStageSinglePassConfig(**config_data)
+        return cls(process_config=process_config, sample_size=sample_size, name=name)
+
+    def __init__(self, process_config: ProcConfig, sample_size: int = 1, name: str = "UnnamedExperiment"):
+        #self.process_config = process_config
+        self.sample_size = sample_size
+        self.model = pyo.ConcreteModel(name=name)
+        self._build_model(process_config=process_config)
+
+    def _build_model(self, process_config: ProcConfig = None):
+        def _prepare_sample_blk(b):
+            blk_proc = OneStageSinglePass(cfg=process_config)
+            blk_m = blk_proc.m
+            b.transfer_attributes_from(blk_m)
 
         self.model.sample_set = pyo.Set(initialize=range(self.sample_size))
-        self.model.sample_blk = pyo.Block(self.model.sample_set, rule=_prepare_edsp_blk)
+        self.model.sample_blk = pyo.Block(self.model.sample_set, rule=_prepare_sample_blk)
         add_object_reference(
             self.model,
             "length_domain",
