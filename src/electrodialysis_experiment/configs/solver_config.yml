@@ -1,0 +1,9 @@
+solver:
+  ipopt:
+    tol: 1e-8
+    max_iter: 500
+    linear_solver: ma27
+    bound_push: 1e-5
+    mu_strategy: monotone
+    nlp_scaling_method: user-scaling
+    

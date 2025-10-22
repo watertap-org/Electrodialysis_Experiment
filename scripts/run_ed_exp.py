@@ -1,7 +1,7 @@
 # A script to run the electrodialysis experiment model with surrogate for cation-cem transport number
 
 import pandas as pd
-import electrodialysis_experiment.schema.data as ds
+import electrodialysis_experiment.schema.experiment.data as ds
 from electrodialysis_experiment.experiment import MasterExperimentBuilder
 import IPython as ipy
 import pyomo.environ as pyo
@@ -21,6 +21,12 @@ from electrodialysis_experiment.surrogates.transport_number_membrane.registry im
 )
 from electrodialysis_experiment.surrogates.transport_number_membrane.log_linear_conc_ratio import (
     predict_ti_by_surrogate,
+)
+from electrodialysis_experiment.processes.one_stage_single_pass import (
+    OneStageSinglePass,
+)
+from electrodialysis_experiment.utils.solver_configuring import (
+    get_ipopt_configed_solver,
 )
 
 
@@ -107,7 +113,6 @@ def prepare_experiment():
     )
     # display(dt)
     size = 25
-    ion = _get_ion_dict()
     # Prepare data for the experiment
     fl_dt, param_dt, ti_data, ci_data = (
         ds.prepare_fluid_cond_dt(dt),
@@ -115,31 +120,36 @@ def prepare_experiment():
         ds.prepare_cation_cem_tranport_numbre_estimate(dt),
         ds.prepare_cation_product_conc(dt),
     )
-    fl_dt_compatible = ds.prepare_fluid_cond_dt_compatible_to_calculate_state(fl_dt)
+    # fl_dt_compatible = ds.prepare_fluid_cond_dt_compatible_to_calculate_state(fl_dt)
     target_var_list, target_df = ds.prepare_target_variable_dt(dt)
-
-    # Create the experiment
-    exp = MasterExperimentBuilder(ion=ion, sample_size=size, finite_diff_elements=100)
-
-    # Condition the individual experiments; this solves each sed block at DOF=0 at the best-estiated conditions recorded in the param yaml.
-
-    # exp.condition_individual_experiments(
-    #     fluid_cond=fl_dt_compatible,
-    #     param_dt_upd=param_dt,
-    #     cation_cem_transport_number=ti_data,
-    #     param_yaml="src/electrodialysis_experiment/configs/sed_single_pass_param.yaml",
-    #     max_iter=500,
-    # )
-
-    # The model snapshot is saved after this step. This can be used to skip the conditioning step above, provided that a conditioned model snapshot has been obtained.
-    # exp.save_model_hdf("src/electrodialysis_experiment/data/output/m_conditioned_dof0.h5")
-
-    # Load the saved model snapshot; this can be used to skip the conditioning step above, provided that a conditioned model snapshot has been obtained.
-    exp.load_model_data(
-        "src/electrodialysis_experiment/data/output/m_conditioned_dof0.h5"
+    solver = get_ipopt_configed_solver(
+        "src/electrodialysis_experiment/configs/solver_config.yml"
     )
 
-    iscale.calculate_scaling_factors(exp.model)
+    # Create the experiment
+    exp = MasterExperimentBuilder.proc_config_from_yaml(
+        "src/electrodialysis_experiment/configs/one_stage_single_pass.yml",
+        sample_size=size,
+    )
+
+    # Intialize the individual sample blocks.
+    # exp.initialize_individual_sample_blks(
+    #     scaling_cfg_path="src/electrodialysis_experiment/configs/scaling.yml",
+    #     process_init_cfg_path="src/electrodialysis_experiment/configs/ossp_init_config.yml",
+    #     fluid_condition=fl_dt,
+    #     solver=solver,
+
+    # )
+    # The model snapshot is saved after this step. This can be used to skip the conditioning step above, provided that a conditioned model snapshot has been obtained.
+    # exp.save_model_hdf("src/electrodialysis_experiment/data/output/init0.h5")
+
+    ## OR
+    # Load the saved model snapshot; this can be used to skip the conditioning step above, provided that a conditioned model snapshot has been obtained.
+    exp.load_model_data("src/electrodialysis_experiment/data/output/init0.h5")
+    # check_badly_scaled_vars(exp.model)
+
+    # iscale.calculate_scaling_factors(exp.model)
+    check_badly_scaled_vars(exp.model)
 
     # Add the cation_cem_transport_number_simulator block to the experiment model
     exp.add_cation_cem_transport_number_simulator(
@@ -156,7 +166,9 @@ def prepare_experiment():
         reference_ion="Na_+",
         log_objective=False,
         polynomial_degree=5,
+        plot_results=False,
     )
+    # check_badly_scaled_vars(exp.model)
 
     # Optional additional initialization routines, at the user's discretion. These, however, may yield an improved or feasible initial point for the subsequent optimization step.
 
@@ -170,15 +182,15 @@ def prepare_experiment():
     # The "initially-trained" means the model was trained using cation-cem transport number data experimentally estimated by a empirical equation (\deltaCi/deltaCtotal)
 
     # model = exp.model
-    # cation_set = model.sample_blk[0].fs.properties.cation_set
+    # cation_set = model.sample_blk[0].proc.fs.properties.cation_set
     # surr_fn = SURROGATE_IDENTITY["log_linear_polynomial"]
-    # length_domain = model.sample_blk[0].fs.EDstack.diluate.length_domain
+    # length_domain = model.sample_blk[0].proc.fs.EDstack.diluate.length_domain
     # for i, v in model.sample_blk.items():
     #     dependent_conc = {
     #         j: np.array(
     #             [
     #                 pyo.value(
-    #                     v.fs.EDstack.diluate.properties[0, x].conc_mol_phase_comp[
+    #                     v.proc.fs.EDstack.diluate.properties[0, x].conc_mol_phase_comp[
     #                         "Liq", j
     #                     ]
     #                 )
@@ -200,14 +212,15 @@ def prepare_experiment():
     #     assert len(ion_trans_pred["Na_+"]) == len(length_domain)
     #     for ion in cation_set:
     #         for ind, x in enumerate(length_domain):
-    #             v.fs.EDstack.ion_trans_number_membrane["cem", ion, x].fix(
+    #             v.proc.fs.EDstack.ion_trans_number_membrane["cem", ion, x].fix(
     #                 ion_trans_pred[ion][ind]
     #             )
 
     # #exp.free_cation_transport_numbers_in_cem()
-    # exp.solve_individual_blocks(linear_solver="ma27", max_iter=500, tee=True)
+
+    # exp.solve_individual_blocks(solver=solver, tee=True)
     # check_badly_scaled_vars(exp.model)
-    # exp.save_model_hdf("src/electrodialysis_experiment/data/output/m_conditioned_dof0_with_surr_ti.h5")
+    # exp.save_model_hdf("src/electrodialysis_experiment/data/output/test_second_init.h5")
 
     # Rountine 2. Solve the entire model at DOF=0 to get a better initial point.
     model = exp.model
@@ -215,17 +228,17 @@ def prepare_experiment():
         v.conc_ratio_coef["Ca_2+"].fix(fitted_dict["Ca_2+"])
         v.conc_ratio_coef["Mg_2+"].fix(fitted_dict["Mg_2+"])
     exp.free_cation_transport_numbers_in_cem()
-    # exp.add_equal_ocv_constraint()
+    exp.add_equal_ocv_constraint()
 
-    for edfs in model.sample_blk.values():
-        edfs.fs.ocv.unfix()
-        edfs.fs.ocv.setlb(0)
-        edfs.fs.ocv.setub(5.5)
-        edfs.fs.EDstack.slack_resistance.fix(0)
-        # edfs.fs.EDstack.current_utilization.fix(1)
-        edfs.fs.EDstack.current_utilization.unfix()
-        edfs.fs.EDstack.current_utilization.setlb(0.2)
-        edfs.fs.EDstack.current_utilization.setub(1.0)
+    for blk in model.sample_blk.values():
+        blk.proc.fs.ocv.unfix()
+        blk.proc.fs.ocv.setlb(0)
+        blk.proc.fs.ocv.setub(5.5)
+        blk.proc.fs.EDstack.slack_resistance.fix(0)
+        # blk.proc.fs.EDstack.current_utilization.fix(1)
+        blk.proc.fs.EDstack.current_utilization.unfix()
+        blk.proc.fs.EDstack.current_utilization.setlb(0.2)
+        blk.proc.fs.EDstack.current_utilization.setub(1.0)
     print(f"DOF={mstat.degrees_of_freedom(model)}")
     solver = pyo.SolverFactory("ipopt")
     solver.options["max_iter"] = 1000  # Set maximum iterations
@@ -242,14 +255,14 @@ def prepare_experiment():
         print("\n[!] Solver interrupted by user. Saving snapshot...")
     finally:
         # This runs both after success and after Ctrl-C
-        exp.save_model_hdf(
-            "src/electrodialysis_experiment/data/output/m_solved_slkocvcu_with_surr.h5"
-        )
+        exp.save_model_hdf("src/electrodialysis_experiment/data/output/init1_rout2.h5")
 
-    ## Plotting
+    # Plotting
     sim_Na = [
         pyo.value(
-            model.sample_blk[i].fs.prod.properties[0].conc_mol_phase_comp["Liq", "Na_+"]
+            model.sample_blk[i]
+            .proc.fs.prod.properties[0]
+            .conc_mol_phase_comp["Liq", "Na_+"]
         )
         for i in model.sample_set
     ]
@@ -259,7 +272,7 @@ def prepare_experiment():
     sim_Ca = [
         pyo.value(
             model.sample_blk[i]
-            .fs.prod.properties[0]
+            .proc.fs.prod.properties[0]
             .conc_mol_phase_comp["Liq", "Ca_2+"]
         )
         for i in model.sample_set
@@ -270,7 +283,7 @@ def prepare_experiment():
     sim_Mg = [
         pyo.value(
             model.sample_blk[i]
-            .fs.prod.properties[0]
+            .proc.fs.prod.properties[0]
             .conc_mol_phase_comp["Liq", "Mg_2+"]
         )
         for i in model.sample_set
@@ -291,9 +304,11 @@ def run_experiment():
         "src/electrodialysis_experiment/data/raw/dt_x_y_4_061025.parquet"
     )
     size = 25
-    ion = _get_ion_dict()
     # Build the experiment
-    exp = MasterExperimentBuilder(ion=ion, sample_size=size, finite_diff_elements=100)
+    exp = MasterExperimentBuilder.proc_config_from_yaml(
+        "src/electrodialysis_experiment/configs/one_stage_single_pass.yml",
+        sample_size=size,
+    )
     # Add the cation_cem_transport_number_simulator block to the experiment model
     exp.add_cation_cem_transport_number_simulator(
         surrogate_method=SurrogateType.LOG_LINEAR_POLYNOMIAL,
@@ -305,23 +320,22 @@ def run_experiment():
     exp.add_equal_ocv_constraint()
 
     # Load a saved model snapshot as the initial point; this can be from the prepare_experiment() function above or another saved model snapshot that is believed to be a good initial point.
-    exp.load_model_data(
-        "src/electrodialysis_experiment/data/output/m_solved_slkocvcu_with_surr.h5"
-    )
+    exp.load_model_data("src/electrodialysis_experiment/data/output/init0.h5")
+    exp.free_cation_transport_numbers_in_cem()
 
     model = exp.model
 
     # Unfix some variables to become slack variables
-    for edfs in model.sample_blk.values():
-        if edfs.fs.ocv.is_fixed():
-            edfs.fs.ocv.unfix()
-        edfs.fs.ocv.setlb(0)
-        edfs.fs.ocv.setub(5.5)
-        edfs.fs.EDstack.slack_resistance.fix(0)
-        if edfs.fs.EDstack.current_utilization.is_fixed():
-            edfs.fs.EDstack.current_utilization.unfix()
-        edfs.fs.EDstack.current_utilization.setlb(0.2)
-        edfs.fs.EDstack.current_utilization.setub(1.0)
+    for blk in model.sample_blk.values():
+        if blk.proc.fs.ocv.is_fixed():
+            blk.proc.fs.ocv.unfix()
+        blk.proc.fs.ocv.setlb(0)
+        blk.proc.fs.ocv.setub(5.5)
+        blk.proc.fs.EDstack.slack_resistance.fix(0)
+        if blk.proc.fs.EDstack.current_utilization.is_fixed():
+            blk.proc.fs.EDstack.current_utilization.unfix()
+        blk.proc.fs.EDstack.current_utilization.setlb(0.2)
+        blk.proc.fs.EDstack.current_utilization.setub(1.0)
 
     for i, v in model.cation_cem_transport_number_simulator.items():
         v.conc_ratio_coef["Ca_2+"].unfix()
@@ -343,6 +357,7 @@ def run_experiment():
 
     solver = pyo.SolverFactory("ipopt")
     solver.options["max_iter"] = 1000  # Set maximum iterations
+    solver.options["tol"] = 1e-12
     # solver.options["mu_strategy"] = "adaptive"
     # solver.options["halt_on_ampl_error"] = "yes"
     solver.options["nlp_scaling_method"] = (
@@ -357,13 +372,13 @@ def run_experiment():
     finally:
         # This runs both after success and after Ctrl-C
         exp.save_model_hdf(
-            "src/electrodialysis_experiment/data/output/m_concSSE_minimized_slkocvcu_with_surrloglin.h5"
+            "src/electrodialysis_experiment/data/output/m_concSSE_minimized_slkocvcu_with_surrloglin_newstru_frominit0.h5"
         )
 
-    for k, edfs in model.sample_blk.items():
-        print(f"OCV of sample {k}: {pyo.value(edfs.fs.ocv)} V")
+    for k, blk in model.sample_blk.items():
+        print(f"OCV of sample {k}: {pyo.value(blk.proc.fs.ocv)} V")
         print(
-            f"Current utilization of sample {k}: {pyo.value(edfs.fs.EDstack.current_utilization)}"
+            f"Current utilization of sample {k}: {pyo.value(blk.proc.fs.EDstack.current_utilization)}"
         )
 
     for i, v in model.cation_cem_transport_number_simulator.items():
@@ -372,7 +387,9 @@ def run_experiment():
     ## Plotting
     sim_Na = [
         pyo.value(
-            model.sample_blk[i].fs.prod.properties[0].conc_mol_phase_comp["Liq", "Na_+"]
+            model.sample_blk[i]
+            .proc.fs.prod.properties[0]
+            .conc_mol_phase_comp["Liq", "Na_+"]
         )
         for i in model.sample_set
     ]
@@ -382,7 +399,7 @@ def run_experiment():
     sim_Ca = [
         pyo.value(
             model.sample_blk[i]
-            .fs.prod.properties[0]
+            .proc.fs.prod.properties[0]
             .conc_mol_phase_comp["Liq", "Ca_2+"]
         )
         for i in model.sample_set
@@ -393,7 +410,7 @@ def run_experiment():
     sim_Mg = [
         pyo.value(
             model.sample_blk[i]
-            .fs.prod.properties[0]
+            .proc.fs.prod.properties[0]
             .conc_mol_phase_comp["Liq", "Mg_2+"]
         )
         for i in model.sample_set

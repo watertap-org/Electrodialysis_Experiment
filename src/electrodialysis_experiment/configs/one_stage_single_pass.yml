@@ -1,5 +1,5 @@
 ed_stack:
-  finite_elements: 2
+  finite_elements: 100
   has_pressure_change: true
   pressure_drop_method: experimental
   friction_factor_method: fixed
@@ -38,12 +38,4 @@ solution:
 
 process:
   build_costing: false
-  tee: true
 
-ipopt:
-  tol: 1e-8
-  max_iter: 500
-  linear_solver: ma27
-  bound_push: 1e-5
-  mu_strategy: monotone
-  nlp_scaling_method: user-scaling

@@ -1,5 +1,4 @@
-# import ed_conc_recirc_proc as edcr
-import electrodialysis_experiment.processes.single_pass as edsp
+from __future__ import annotations
 import pandas as pd
 import idaes.core.util.model_statistics as mstat
 from idaes.core.solvers.get_solver import get_solver
@@ -15,13 +14,18 @@ from pyomo.dae import DerivativeVar
 import os
 import ast
 import idaes.logger as log
+from electrodialysis_experiment.schema.experiment.data import FluidCondition
 from electrodialysis_experiment.surrogates.transport_number_membrane.cation_cem_simulator import (
     CationCemTransportNumberSimulator,
     SurrogateType,
 )
 from typing import List, Dict, Tuple, Union, TypeVar
-from electrodialysis_experiment.processes.one_stage_single_pass import OneStageSinglePass
-from electrodialysis_experiment.schema.config.process_config_schema import OneStageSinglePassConfig
+from electrodialysis_experiment.processes.one_stage_single_pass import (
+    OneStageSinglePass,
+)
+from electrodialysis_experiment.schema.config.process_config_schema import (
+    OneStageSinglePassConfig,
+)
 from pydantic import BaseModel
 from pathlib import Path
 import yaml
@@ -31,88 +35,109 @@ _log = log.getLogger(__name__)
 
 ProcConfig = TypeVar("ProcConfig", bound=BaseModel)
 
+
 class MasterExperimentBuilder:
 
     @classmethod
-    def proc_config_from_yaml(cls, path: str | Path, sample_size: int = 1, name: str = "UnnamedExperiment"):
+    def proc_config_from_yaml(
+        cls, path: str | Path, sample_size: int = 1, name: str = "UnnamedExperiment"
+    ):
         with open(path, "r") as f:
             config_data = yaml.safe_load(f)
         process_config = OneStageSinglePassConfig(**config_data)
         return cls(process_config=process_config, sample_size=sample_size, name=name)
 
-    def __init__(self, process_config: ProcConfig, sample_size: int = 1, name: str = "UnnamedExperiment"):
-        #self.process_config = process_config
+    def __init__(
+        self,
+        process_config: ProcConfig,
+        sample_size: int = 1,
+        name: str = "UnnamedExperiment",
+    ):
+        # self.process_config = process_config
         self.sample_size = sample_size
         self.model = pyo.ConcreteModel(name=name)
         self._build_model(process_config=process_config)
 
     def _build_model(self, process_config: ProcConfig = None):
-        def _prepare_sample_blk(b):
-            blk_proc = OneStageSinglePass(cfg=process_config)
-            blk_m = blk_proc.m
-            b.transfer_attributes_from(blk_m)
+        def _prepare_sample_blk(b, i):
+            b.proc = OneStageSinglePass(process_cfg=process_config)
 
         self.model.sample_set = pyo.Set(initialize=range(self.sample_size))
-        self.model.sample_blk = pyo.Block(self.model.sample_set, rule=_prepare_sample_blk)
-        add_object_reference(
-            self.model,
-            "length_domain",
-            self.model.sample_blk[0].fs.EDstack.diluate.length_domain,
+        self.model.sample_blk = pyo.Block(
+            self.model.sample_set, rule=_prepare_sample_blk
         )
 
-    def _initialize_model_edsp_blocks(
+    def initialize_individual_sample_blks(
         self,
-        fluid_cond_dt: List[Dict],
-        param_dt: List[Dict],
-        cation_cem_transport_number: List[Dict],
-        base_param_yaml: str = "",
-        max_iter: int = None,
-        linear_solver: str = "ma27",
+        scaling_cfg_path: str | Path = None,
+        process_init_cfg_path: str | Path = None,
+        fluid_condition: List[FluidCondition] = None,
+        solver=None,
+        tee: bool = True,
     ):
         for i, b in self.model.sample_blk.items():
-            edsp.set_ion_memb_properties(b, **self.ion)
-            edsp.apply_param_values(
-                m=b, yaml_file=base_param_yaml, yaml_data=None, prefix=b.name
-            )
-            edsp.update_var_values_pydantic(b, param_dt[i])
-            edsp.update_cation_cem_transport_number(b, cation_cem_transport_number[i])
-            edsp.initialize_dof0_system(
-                m=b,
-                initargs=fluid_cond_dt[i],
-                solve_after_init=True,
-                linear_solver=linear_solver,
-                max_iter=max_iter,
-                tee=True,
+            if scaling_cfg_path:
+                b.proc.import_scaling_config(scaling_cfg_path)
+            if process_init_cfg_path:
+                b.proc.import_init_value_config(process_init_cfg_path)
+            b.proc.initialize_process(
+                fluid_condition=fluid_condition[i], solver=solver, tee=tee
             )
             _log.info(f"Block {i} initialized.")
 
-    def condition_individual_experiments(
-        self,
-        fluid_cond: List[Dict],
-        param_dt_upd: List[Dict],
-        cation_cem_transport_number: List[Dict],
-        max_iter: int = None,
-        linear_solver: str = "ma27",
-        param_yaml="edsp_param.yaml",
-    ):
+    # def _initialize_model_edsp_blocks(
+    #     self,
+    #     fluid_cond_dt: List[Dict],
+    #     param_dt: List[Dict],
+    #     cation_cem_transport_number: List[Dict],
+    #     base_param_yaml: str = "",
+    #     max_iter: int = None,
+    #     linear_solver: str = "ma27",
+    # ):
+    #     for i, b in self.model.sample_blk.items():
+    #         edsp.set_ion_memb_properties(b, **self.ion)
+    #         edsp.apply_param_values(
+    #             m=b, yaml_file=base_param_yaml, yaml_data=None, prefix=b.name
+    #         )
+    #         edsp.update_var_values_pydantic(b, param_dt[i])
+    #         edsp.update_cation_cem_transport_number(b, cation_cem_transport_number[i])
+    #         edsp.initialize_dof0_system(
+    #             m=b,
+    #             initargs=fluid_cond_dt[i],
+    #             solve_after_init=True,
+    #             linear_solver=linear_solver,
+    #             max_iter=max_iter,
+    #             tee=True,
+    #         )
+    #         _log.info(f"Block {i} initialized.")
 
-        self._initialize_model_edsp_blocks(
-            fluid_cond_dt=fluid_cond,
-            param_dt=param_dt_upd,
-            cation_cem_transport_number=cation_cem_transport_number,
-            base_param_yaml=param_yaml,
-            max_iter=max_iter,
-            linear_solver=linear_solver,
-        )
+    # def condition_individual_experiments(
+    #     self,
+    #     fluid_cond: List[Dict],
+    #     param_dt_upd: List[Dict],
+    #     cation_cem_transport_number: List[Dict],
+    #     max_iter: int = None,
+    #     linear_solver: str = "ma27",
+    #     param_yaml="edsp_param.yaml",
+    # ):
+
+    #     self._initialize_model_edsp_blocks(
+    #         fluid_cond_dt=fluid_cond,
+    #         param_dt=param_dt_upd,
+    #         cation_cem_transport_number=cation_cem_transport_number,
+    #         base_param_yaml=param_yaml,
+    #         max_iter=max_iter,
+    #         linear_solver=linear_solver,
+    #     )
 
     def solve_individual_blocks(
-        self, tee=True, linear_solver="ma27", max_iter: int = None
-    ):
+        self, solver=None, tee=True
+    ):  # tee=True, linear_solver="ma27", max_iter: int = None
+
         for i, b in self.model.sample_blk.items():
             print(f"DOF= {mstat.degrees_of_freedom(b)}.")
-            result = edsp.solve(
-                b, tee=tee, linear_solver=linear_solver, max_iter=max_iter
-            )
+            # opt={ "linear_solver": linear_solver, "max_iter": max_iter}
+            result = OneStageSinglePass.solve(b.proc, solver=solver, tee=tee)
             if result.solver.termination_condition == pyo.TerminationCondition.optimal:
                 _log.info(f"Block {i} solved successfully.")
             else:
@@ -120,20 +145,24 @@ class MasterExperimentBuilder:
                     f"Block {i} failed to yield an optimal solution, with termination condition {result.solver.termination_condition}."
                 )
 
-    def solve_specific_edsp_block(
-        self, index: int, tee=True, linear_solver="ma27", max_iter: int = None
+    def initialize_specific_sample_block(
+        self,
+        index: int,
+        scaling_cfg_path: str | Path = None,
+        process_init_cfg_path: str | Path = None,
+        fluid_condition: FluidCondition = None,
+        solver=None,
+        tee: bool = True,
     ):
-        if index not in self.model.sample_set:
-            raise ValueError(f"Index {index} not in sample_set.")
-        b = self.model.sample_blk[index]
-        print(f"DOF= {mstat.degrees_of_freedom(b)}.")
-        result = edsp.solve(b, tee=tee, linear_solver=linear_solver, max_iter=max_iter)
-        if result.solver.termination_condition == pyo.TerminationCondition.optimal:
-            _log.info(f"Block {index} solved successfully.")
-        else:
-            _log.warning(
-                f"Block {index} failed to yield an optimal solution, with termination condition {result.solver.termination_condition}."
+        if scaling_cfg_path:
+            self.model.sample_blk[index].proc.import_scaling_config(scaling_cfg_path)
+        if process_init_cfg_path:
+            self.model.sample_blk[index].proc.import_init_value_config(
+                process_init_cfg_path
             )
+        self.model.sample_blk[index].proc.initialize_process(
+            fluid_condition=fluid_condition, solver=solver, tee=tee
+        )
 
     def add_cation_cem_transport_number_simulator(
         self, surrogate_method: SurrogateType, **surrogate_params
@@ -439,7 +468,7 @@ class MasterExperimentBuilder:
         expr = sum(
             weights[var]
             * (
-                self._resolve_path_from(var, self.model.sample_blk[i])
+                self._resolve_path_from(var, self.model.sample_blk[i].proc)
                 - data[var].iloc[i]
             )
             ** 2
@@ -456,25 +485,25 @@ class MasterExperimentBuilder:
         Unfixes cation transport numbers in the CEM for all samples and adds a constraint so their sum equals 1 at each membrane position.
         """
 
-        cation_set = self.model.sample_blk[0].fs.EDstack.cation_set
+        cation_set = self.model.sample_blk[0].proc.fs.EDstack.cation_set
         for i in self.model.sample_set:
             for ion in cation_set:
                 if (
                     self.model.sample_blk[i]
-                    .fs.EDstack.ion_trans_number_membrane["cem", ion, :]
+                    .proc.fs.EDstack.ion_trans_number_membrane["cem", ion, :]
                     .is_fixed()
                 ):
-                    self.model.sample_blk[i].fs.EDstack.ion_trans_number_membrane[
+                    self.model.sample_blk[i].proc.fs.EDstack.ion_trans_number_membrane[
                         "cem", ion, :
                     ].unfix()
 
     def add_cation_transport_number_sum_constraint(self):
         # Add constraint: sum of ion transport numbers for cations at each x in length_domain equals 1
-        cation_set = self.model.sample_blk[0].fs.EDstack.cation_set
+        cation_set = self.model.sample_blk[0].proc.fs.EDstack.cation_set
         self.model.cem_trans_number_sum_con = pyo.ConstraintList()
         for x in self.model.length_domain:
             expr = sum(
-                self.model.sample_blk[0].fs.EDstack.ion_trans_number_membrane[
+                self.model.sample_blk[0].proc.fs.EDstack.ion_trans_number_membrane[
                     "cem", ion, x
                 ]
                 for ion in cation_set
@@ -497,7 +526,7 @@ class MasterExperimentBuilder:
         for sample_idx in m.sample_blk:
             if sample_idx != first_sample_idx:
                 m.ocv_equality_cons.add(
-                    first_sample.fs.ocv == m.sample_blk[sample_idx].fs.ocv
+                    first_sample.proc.fs.ocv == m.sample_blk[sample_idx].proc.fs.ocv
                 )
 
     def add_log_linear_surr_coef_constraint(self):
@@ -570,13 +599,13 @@ class MasterExperimentBuilder:
             )
 
         for blk in self.model.sample_blk.values():
-            blk.fs.EDstack.smoothness_penalty = pyo.Expression(
+            blk.proc.fs.EDstack.smoothness_penalty = pyo.Expression(
                 rule=t_smoothness_penalty_rule
             )
 
         self.model.total_trans_num_smoothness_penalty = pyo.Expression(
             expr=sum(
-                blk.fs.EDstack.smoothness_penalty
+                blk.proc.fs.EDstack.smoothness_penalty
                 for blk in self.model.sample_blk.values()
             )
         )
