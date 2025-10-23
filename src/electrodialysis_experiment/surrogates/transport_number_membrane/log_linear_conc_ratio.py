@@ -23,14 +23,14 @@ def build_log_linear_polynomial(b: pyo.Block, eps: float = 1e-12) -> None:
     Parameters
     ----------
     b : pyomo.Block
-        Block to modify. Must provide cation_set, _reference_ion, and EDstack via model().sample_blk[ind].fs.EDstack.
+        Block to modify. Must provide cation_set, _reference_ion, and EDstack via model().sample_blk[ind].proc.fs.EDstack.
     eps : float, optional
         Small epsilon to keep logs well-defined. Default is 1e-12.
     """
 
     def _build_for_block(bd: ProcessBlockData, ind):
         m = bd.model()
-        sed = m.sample_blk[ind].fs.EDstack  # member-specific EDstack
+        sed = m.sample_blk[ind].proc.fs.EDstack  # member-specific EDstack
         X = sed.diluate.length_domain
 
         if bd._reference_ion not in bd.cation_set:
@@ -106,14 +106,14 @@ def build_log_linear_log(b: pyo.Block, eps: float = 1e-12) -> None:
     Parameters
     ----------
     b : pyomo.Block
-        Block to modify. Must provide cation_set, _reference_ion, and EDstack via model().sample_blk[ind].fs.EDstack.
+        Block to modify. Must provide cation_set, _reference_ion, and EDstack via model().sample_blk[ind].proc.fs.EDstack.
     eps : float, optional
         Small epsilon to keep logs well-defined. Default is 1e-12.
     """
 
     def _build_for_block(bd: ProcessBlockData, ind):
         m = bd.model()
-        sed = m.sample_blk[ind].fs.EDstack  # member-specific EDstack
+        sed = m.sample_blk[ind].proc.fs.EDstack  # member-specific EDstack
         X = sed.diluate.length_domain
 
         if bd._reference_ion not in bd.cation_set:
@@ -185,6 +185,7 @@ def init_log_linear_polynomial(
     log_objective: bool = False,
     polynomial_degree: int = 1,
     eps: float = 1e-12,
+    plot_results: bool = True,
 ):
     ions = list(conc_data[0].keys())
     J = [j for j in ions if j != reference_ion]
@@ -202,7 +203,7 @@ def init_log_linear_polynomial(
 
     # Design matrix A: each column is c_k/c_ref for ion k
     A = np.column_stack([c_ratio[k] for k in J])
-    show(A)  # TOBEDELETED
+    # show(A)  # TOBEDELETED
     # def _taylor_log1p(x, degree=1):
     #     """
     #     Taylor approximation to log(1+x) at x=0 up to given degree (degree >= 1).
@@ -373,48 +374,42 @@ def init_log_linear_polynomial(
 
         print(f"R-squared for {ion}: {r2:.4f}")
 
-    # Plot predicted vs. actual transport numbers
-    fig = go.Figure()
+    if plot_results:
+        # Plot predicted vs. actual transport numbers
+        fig = go.Figure()
 
-    for ion in ions:
+        for ion in ions:
+            fig.add_trace(
+                go.Scatter(
+                    x=t_data[ion],
+                    y=ti_pred[ion],
+                    mode="markers",
+                    name=f"{ion} (Predicted)",
+                    hovertemplate="Actual: %{x:.4f}<br>Predicted: %{y:.4f}<extra></extra>",
+                )
+            )
+
+        # Add a y=x line for reference
+        all_values = np.concatenate(list(t_data.values()))
+        min_val, max_val = np.min(all_values), np.max(all_values)
         fig.add_trace(
             go.Scatter(
-                x=t_data[ion],
-                y=ti_pred[ion],
-                mode="markers",
-                name=f"{ion} (Predicted)",
-                hovertemplate="Actual: %{x:.4f}<br>Predicted: %{y:.4f}<extra></extra>",
+                x=[min_val, max_val],
+                y=[min_val, max_val],
+                mode="lines",
+                line=dict(color="gray", dash="dash"),
+                name="Ideal (y=x)",
             )
         )
 
-    # Add a y=x line for reference
-    all_values = np.concatenate(list(t_data.values()))
-    min_val, max_val = np.min(all_values), np.max(all_values)
-    fig.add_trace(
-        go.Scatter(
-            x=[min_val, max_val],
-            y=[min_val, max_val],
-            mode="lines",
-            line=dict(color="gray", dash="dash"),
-            name="Ideal (y=x)",
+        fig.update_layout(
+            title="Predicted vs. Actual Transport Numbers",
+            xaxis_title="Actual Transport Number",
+            yaxis_title="Predicted Transport Number",
+            legend_title="Ions",
+            template="plotly_white",
         )
-    )
-
-    fig.update_layout(
-        title="Predicted vs. Actual Transport Numbers",
-        xaxis_title="Actual Transport Number",
-        yaxis_title="Predicted Transport Number",
-        legend_title="Ions",
-        template="plotly_white",
-    )
-    fig.show()
-
-    # # Assign fitted values to the Pyomo block
-    # for j, val in fitted_coef_dict.items():
-    #     if (j, 1) in b.conc_ratio_coef:
-    #         b.conc_ratio_coef[j, 1].set_value(val)
-
-    # return ti_pred, fitted_coef_dict
+        fig.show()
 
     return fitted_coef_dict
 

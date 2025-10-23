@@ -21,7 +21,7 @@ class SurrogateType(Enum):
 class CationCemTransportNumberSimulatorData(ProcessBlockData):
     """The transport number simulator will be attached to the experiment model directly.
     It will be indexed by the sample_set, with each member associated with the corresponding
-    sample_blk. Each sample_blk has the structure of sample_blk.fs.EDstack, etc., i.e., each
+    sample_blk. Each sample_blk has the structure of sample_blk.proc.fs.EDstack, etc., i.e., each
     sample_blk carries a ED flowsheet."""
 
     CONFIG = ConfigBlock(implicit=True)
@@ -71,19 +71,21 @@ class CationCemTransportNumberSimulatorData(ProcessBlockData):
         # Check the experimental model has essential ED flowsheets on sample_blk.
         m = self.parent_block()
         for blk in m.sample_blk.values():
-            if not hasattr(blk, "fs"):
-                raise ValueError('Each sample_blk must have a "fs" attribute.')
-            if not hasattr(blk.fs, "properties"):
+            if not hasattr(blk, "proc"):
+                raise ValueError('Each sample_blk must have a "proc" attribute.')
+            if not hasattr(blk.proc, "fs"):
+                raise ValueError('Each sample_blk.proc must have a "fs" attribute.')
+            if not hasattr(blk.proc.fs, "properties"):
                 raise ValueError(
-                    'Each sample_blk.fs must have a "properties" attribute.'
+                    'Each sample_blk.proc.fs must have a "properties" attribute.'
                 )
-            if not hasattr(blk.fs.properties, "cation_set"):
+            if not hasattr(blk.proc.fs.properties, "cation_set"):
                 raise ValueError(
-                    'Each sample_blk.fs.properties must have a "cation_set" attribute.'
+                    'Each sample_blk.proc.fs.properties must have a "cation_set" attribute.'
                 )
 
         add_object_reference(
-            self, "cation_set", m.sample_blk[0].fs.properties.cation_set
+            self, "cation_set", m.sample_blk[0].proc.fs.properties.cation_set
         )
 
     def initiate_surrogate(
@@ -96,6 +98,7 @@ class CationCemTransportNumberSimulatorData(ProcessBlockData):
         log_objective: bool = False,
         polynomial_degree: int = 1,
         eps: float = 1e-12,
+        plot_results: bool = True,
     ):
         # Initialize the surrogate model
         try:
@@ -116,6 +119,7 @@ class CationCemTransportNumberSimulatorData(ProcessBlockData):
             polynomial_degree=polynomial_degree,
             coef_bounds=coef_bounds,
             eps=eps,
+            plot_results=plot_results,
         )
         for cation in self.cation_set:
             if cation in coef_init:
