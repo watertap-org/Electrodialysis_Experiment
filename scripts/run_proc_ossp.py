@@ -24,13 +24,13 @@ def main():
     # print(m.proc.__dict__)
     # m.proc.display()
 
-    # m.proc.import_scaling_config("src/electrodialysis_experiment/configs/scaling.yml")
-    # m.proc.import_init_value_config(
-    #     "src/electrodialysis_experiment/configs/ossp_init_config.yml"
-    # )
-    # m.proc.initialize_process(fluid_condition=test_cond)
-    # solutes = m.proc.fs.properties.solute_set
-    # m.proc.display_selected_model_metrics(solutes)
+    m.proc.import_scaling_config("src/electrodialysis_experiment/configs/scaling.yml")
+    m.proc.import_init_value_config(
+        "src/electrodialysis_experiment/configs/ossp_init_config.yml"
+    )
+    m.proc.initialize_process(fluid_condition=test_cond)
+    solutes = m.proc.fs.properties.solute_set
+    m.proc.display_selected_model_metrics(solutes)
 
 
 if __name__ == "__main__":
