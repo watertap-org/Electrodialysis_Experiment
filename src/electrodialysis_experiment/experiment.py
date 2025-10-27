@@ -14,7 +14,7 @@ from pyomo.dae import DerivativeVar
 import os
 import ast
 import idaes.logger as log
-from electrodialysis_experiment.schema.experiment.data import FluidCondition
+from electrodialysis_experiment.schema.experiment.data import FluidCondition, UpdateParam
 from electrodialysis_experiment.surrogates.transport_number_membrane.cation_cem_simulator import (
     CationCemTransportNumberSimulator,
     SurrogateType,
@@ -72,6 +72,8 @@ class MasterExperimentBuilder:
         scaling_cfg_path: str | Path = None,
         process_init_cfg_path: str | Path = None,
         fluid_condition: List[FluidCondition] = None,
+        exp_setup_param: List[UpdateParam]= None,
+        t_est: List[Dict] = None,
         solver=None,
         tee: bool = True,
     ):
@@ -80,6 +82,10 @@ class MasterExperimentBuilder:
                 b.proc.import_scaling_config(scaling_cfg_path)
             if process_init_cfg_path:
                 b.proc.import_init_value_config(process_init_cfg_path)
+            if exp_setup_param:
+                b.proc.update_var_values(exp_setup_param[i])
+            if t_est:
+                b.proc.update_cation_cem_transport_number(t_est[i])
             b.proc.initialize_process(
                 fluid_condition=fluid_condition[i], solver=solver, tee=tee
             )
