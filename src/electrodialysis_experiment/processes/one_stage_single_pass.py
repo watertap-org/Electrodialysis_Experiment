@@ -351,7 +351,7 @@ class OneStageSinglePassData(ProcessBlockData):
                 ),
             )
             iscale.calculate_scaling_factors(self.fs)
-            check_badly_scaled_vars(self.fs)
+            #check_badly_scaled_vars(self.fs, small=1e-2, large=1e2)
             res = self.solve(self.fs, solver=solver, tee=tee)
             if str(res.solver.termination_condition) != "optimal":
                 _log.warning(
@@ -466,6 +466,7 @@ class OneStageSinglePassData(ProcessBlockData):
     ):
         for ion, t_num in t_cation_cem_dict.items():
             self.fs.EDstack.ion_trans_number_membrane["cem", ion, :].fix(t_num)
+            _log.info(f"Fixed cation transport number in CEM for ion '{ion}' to {t_num}.")
 
     def update_var_values(self, updates: dict | BaseModel) -> None:
         """
