@@ -14,7 +14,7 @@ from pyomo.dae import DerivativeVar
 import os
 import ast
 import idaes.logger as log
-from electrodialysis_experiment.schema.experiment.data import FluidCondition
+from electrodialysis_experiment.schema.experiment.data import FluidCondition, UpdateParam
 from electrodialysis_experiment.surrogates.transport_number_membrane.cation_cem_simulator import (
     CationCemTransportNumberSimulator,
     SurrogateType,
@@ -72,6 +72,8 @@ class MasterExperimentBuilder:
         scaling_cfg_path: str | Path = None,
         process_init_cfg_path: str | Path = None,
         fluid_condition: List[FluidCondition] = None,
+        exp_setup_param: List[UpdateParam]= None,
+        t_est: List[Dict] = None,
         solver=None,
         tee: bool = True,
     ):
@@ -80,55 +82,14 @@ class MasterExperimentBuilder:
                 b.proc.import_scaling_config(scaling_cfg_path)
             if process_init_cfg_path:
                 b.proc.import_init_value_config(process_init_cfg_path)
+            if exp_setup_param:
+                b.proc.update_var_values(exp_setup_param[i])
+            if t_est:
+                b.proc.update_cation_cem_transport_number(t_est[i])
             b.proc.initialize_process(
                 fluid_condition=fluid_condition[i], solver=solver, tee=tee
             )
             _log.info(f"Block {i} initialized.")
-
-    # def _initialize_model_edsp_blocks(
-    #     self,
-    #     fluid_cond_dt: List[Dict],
-    #     param_dt: List[Dict],
-    #     cation_cem_transport_number: List[Dict],
-    #     base_param_yaml: str = "",
-    #     max_iter: int = None,
-    #     linear_solver: str = "ma27",
-    # ):
-    #     for i, b in self.model.sample_blk.items():
-    #         edsp.set_ion_memb_properties(b, **self.ion)
-    #         edsp.apply_param_values(
-    #             m=b, yaml_file=base_param_yaml, yaml_data=None, prefix=b.name
-    #         )
-    #         edsp.update_var_values_pydantic(b, param_dt[i])
-    #         edsp.update_cation_cem_transport_number(b, cation_cem_transport_number[i])
-    #         edsp.initialize_dof0_system(
-    #             m=b,
-    #             initargs=fluid_cond_dt[i],
-    #             solve_after_init=True,
-    #             linear_solver=linear_solver,
-    #             max_iter=max_iter,
-    #             tee=True,
-    #         )
-    #         _log.info(f"Block {i} initialized.")
-
-    # def condition_individual_experiments(
-    #     self,
-    #     fluid_cond: List[Dict],
-    #     param_dt_upd: List[Dict],
-    #     cation_cem_transport_number: List[Dict],
-    #     max_iter: int = None,
-    #     linear_solver: str = "ma27",
-    #     param_yaml="edsp_param.yaml",
-    # ):
-
-    #     self._initialize_model_edsp_blocks(
-    #         fluid_cond_dt=fluid_cond,
-    #         param_dt=param_dt_upd,
-    #         cation_cem_transport_number=cation_cem_transport_number,
-    #         base_param_yaml=param_yaml,
-    #         max_iter=max_iter,
-    #         linear_solver=linear_solver,
-    #     )
 
     def solve_individual_blocks(
         self, solver=None, tee=True
@@ -496,6 +457,9 @@ class MasterExperimentBuilder:
                     self.model.sample_blk[i].proc.fs.EDstack.ion_trans_number_membrane[
                         "cem", ion, :
                     ].unfix()
+                    _log.info(
+                        f"Unfixed cation transport number in CEM for ion '{ion}' in block {i}."
+                    )
 
     def add_cation_transport_number_sum_constraint(self):
         # Add constraint: sum of ion transport numbers for cations at each x in length_domain equals 1
@@ -528,6 +492,7 @@ class MasterExperimentBuilder:
                 m.ocv_equality_cons.add(
                     first_sample.proc.fs.ocv == m.sample_blk[sample_idx].proc.fs.ocv
                 )
+        _log.info("Added OCV equality constraints across all samples.")
 
     def add_log_linear_surr_coef_constraint(self):
         m = self.model

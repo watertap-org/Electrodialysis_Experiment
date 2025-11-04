@@ -155,7 +155,7 @@ def prepare_target_variable_dt(
 #     return target_var_list
 
 
-def prepare_cation_cem_tranport_numbre_estimate(
+def prepare_cation_cem_transport_number_estimate(
     df: pd.DataFrame,
 ) -> List[Dict[str, float]]:
     """Compute transport numbers based on charge balance."""
@@ -207,7 +207,7 @@ def load_parquet_and_prepare(path: str):
     df = pd.read_parquet(path)
     fluid_conditions = prepare_fluid_cond_dt(df)
     update_params = prepare_upd_param_dt(df)
-    trans_numbers = prepare_cation_cem_tranport_numbre_estimate(df)
+    trans_numbers = prepare_cation_cem_transport_number_estimate(df)
     return fluid_conditions, update_params, trans_numbers
 
 
@@ -225,7 +225,7 @@ def testing_fun():
     update_params = prepare_upd_param_dt(df)
     print("===updata_param_data===")
     print(update_params)
-    trans_numbers = prepare_cation_cem_tranport_numbre_estimate(df)
+    trans_numbers = prepare_cation_cem_transport_number_estimate(df)
     print("===transport_num_init_data===")
     print(trans_numbers)
 

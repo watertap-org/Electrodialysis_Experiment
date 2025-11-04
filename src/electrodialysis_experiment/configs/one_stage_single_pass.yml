@@ -2,8 +2,8 @@ ed_stack:
   finite_elements: 100
   has_pressure_change: true
   pressure_drop_method: experimental
-  friction_factor_method: fixed
-  hydraulic_diameter_method: conventional
+  #friction_factor_method: fixed
+  #hydraulic_diameter_method: conventional
   operation_mode: Constant_Voltage
   has_nonohmic_potential_membrane: true
   has_Nernst_diffusion_layer: true

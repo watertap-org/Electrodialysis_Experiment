@@ -110,3 +110,17 @@ def apply_scaling(m, cfg: ScalingConfig):
         cons = resolve_path(m, cts.target)
         iscale.constraint_scaling_transform(cons, cts.factor)
         _log.info(f"Set scaling for {cts.target} to {cts.factor}")
+
+    #calculate scaling factors
+    iscale.calculate_scaling_factors(m)
+    #check_badly_scaled_vars(m)
+
+
+def check_badly_scaled_vars(model, small=1e-4, large=1e4):
+    found = False
+    print("Checking scaling factors by thresholds:", small, large)
+    for var, val in iscale.badly_scaled_var_generator(model, small=small, large=large):
+        print(f"Badly scaled var: {var}, value: {val}")
+        found = True
+    if not found:
+        print("No badly scaled variables found.")

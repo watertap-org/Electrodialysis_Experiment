@@ -15,6 +15,7 @@
 # Copyright …
 ###############################################################################
 from __future__ import annotations
+from pydantic import BaseModel
 from pyomo.environ import (
     ConcreteModel,
     Block,
@@ -65,11 +66,8 @@ from electrodialysis_experiment.schema.config.process_config_schema import (
     OneStageSinglePassConfig,
 )
 from electrodialysis_experiment.utils.value_setting import apply_value_updates_from_yaml
-from electrodialysis_experiment.utils.solver_configuring import (
-    get_ipopt_configed_solver,
-)
 from electrodialysis_experiment.schema.experiment.data import FluidCondition
-
+from electrodialysis_experiment.utils.user_scaling import check_badly_scaled_vars
 
 _log = idaeslogger.getIdaesLogger(__name__)
 
@@ -349,6 +347,7 @@ class OneStageSinglePassData(ProcessBlockData):
                 ),
             )
             iscale.calculate_scaling_factors(self.fs)
+            #check_badly_scaled_vars(self.fs, small=1e-2, large=1e2)
             res = self.solve(self.fs, solver=solver, tee=tee)
             if str(res.solver.termination_condition) != "optimal":
                 _log.warning(
@@ -463,6 +462,7 @@ class OneStageSinglePassData(ProcessBlockData):
     ):
         for ion, t_num in t_cation_cem_dict.items():
             self.fs.EDstack.ion_trans_number_membrane["cem", ion, :].fix(t_num)
+            _log.info(f"Fixed cation transport number in CEM for ion '{ion}' to {t_num}.")
 
     def update_var_values(self, updates: dict | BaseModel) -> None:
         """
@@ -500,8 +500,10 @@ class OneStageSinglePassData(ProcessBlockData):
                 for idx, vval in val.items():
                     idx = idx if isinstance(idx, tuple) else (idx,)
                     var[idx].fix(vval)
+                    print(f"Fixed {var_name}{idx} to {vval}.")
             else:
                 var.fix(val)
+                print(f"Fixed {var_name} to {val}.")
 
     @staticmethod
     def search_var_by_name(model: Union[ConcreteModel, Block], var_name: str):
