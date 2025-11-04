@@ -10,6 +10,7 @@ from plotly.subplots import make_subplots
 import string
 from IPython.display import display
 import idaes.core.util.scaling as iscale
+from idaes.core.solvers import get_solver
 import idaes.core.util.model_statistics as mstat
 import numpy as np
 from electrodialysis_experiment.surrogates.transport_number_membrane.cation_cem_simulator import (
@@ -26,7 +27,7 @@ from electrodialysis_experiment.processes.one_stage_single_pass import (
     OneStageSinglePass,
 )
 from electrodialysis_experiment.utils.solver_configuring import (
-    get_ipopt_configed_solver,
+    config_ipopt_solver,
 )
 
 
@@ -97,12 +98,12 @@ def plot_run():
     combined_fig.show()
     ## Other plotting options
     # combined_fig.write_image("src/electrodialysis_experiment/data/derived/training_surr_091025.pdf")
-    # fig4 = plot_trans_number_plotly(exp.model, 0)
+    fig4 = plot_trans_number_plotly(exp.model, 0)
     # fig4.write_image("src/electrodialysis_experiment/data/derived/transport_number_0_021025.pdf")
-    # fig5 = plot_trans_number_plotly(exp.model, 12)
-    # #fig5.write_image("src/electrodialysis_experiment/data/derived/transport_number_12_021025.pdf")
-    # combined_fig2 = panel_from_figs([fig4, fig5], rows=1, cols=2)
-    # combined_fig2.show()
+    fig5 = plot_trans_number_plotly(exp.model, 12)
+    # fig5.write_image("src/electrodialysis_experiment/data/derived/transport_number_12_021025.pdf")
+    combined_fig2 = panel_from_figs([fig4, fig5], rows=1, cols=2)
+    combined_fig2.show()
     # combined_fig2.write_image("data/temp_figs_2909/combined_transport_numbers_021025.pdf")
     pass
 
@@ -117,13 +118,15 @@ def prepare_experiment():
     fl_dt, param_dt, ti_data, ci_data = (
         ds.prepare_fluid_cond_dt(dt),
         ds.prepare_upd_param_dt(dt),
-        ds.prepare_cation_cem_tranport_numbre_estimate(dt),
+        ds.prepare_cation_cem_transport_number_estimate(dt),
         ds.prepare_cation_product_conc(dt),
     )
     # fl_dt_compatible = ds.prepare_fluid_cond_dt_compatible_to_calculate_state(fl_dt)
     target_var_list, target_df = ds.prepare_target_variable_dt(dt)
-    solver = get_ipopt_configed_solver(
-        "src/electrodialysis_experiment/configs/solver_config.yml"
+    sol_ipopt_idaes = get_solver()
+    solver = config_ipopt_solver(
+        solver=sol_ipopt_idaes,
+        config_yaml="src/electrodialysis_experiment/configs/solver_config.yml",
     )
 
     # Create the experiment
@@ -132,13 +135,14 @@ def prepare_experiment():
         sample_size=size,
     )
 
-    # Intialize the individual sample blocks.
+    # Initialize the individual sample blocks.
     # exp.initialize_individual_sample_blks(
     #     scaling_cfg_path="src/electrodialysis_experiment/configs/scaling.yml",
     #     process_init_cfg_path="src/electrodialysis_experiment/configs/ossp_init_config.yml",
     #     fluid_condition=fl_dt,
+    #     exp_setup_param=param_dt,
+    #     t_est=ti_data,
     #     solver=solver,
-
     # )
     # The model snapshot is saved after this step. This can be used to skip the conditioning step above, provided that a conditioned model snapshot has been obtained.
     # exp.save_model_hdf("src/electrodialysis_experiment/data/output/init0.h5")
@@ -146,6 +150,7 @@ def prepare_experiment():
     ## OR
     # Load the saved model snapshot; this can be used to skip the conditioning step above, provided that a conditioned model snapshot has been obtained.
     exp.load_model_data("src/electrodialysis_experiment/data/output/init0.h5")
+    model = exp.model
     # check_badly_scaled_vars(exp.model)
 
     # iscale.calculate_scaling_factors(exp.model)
@@ -223,7 +228,7 @@ def prepare_experiment():
     # exp.save_model_hdf("src/electrodialysis_experiment/data/output/test_second_init.h5")
 
     # Rountine 2. Solve the entire model at DOF=0 to get a better initial point.
-    model = exp.model
+    # model = exp.model
     for i, v in exp.model.cation_cem_transport_number_simulator.items():
         v.conc_ratio_coef["Ca_2+"].fix(fitted_dict["Ca_2+"])
         v.conc_ratio_coef["Mg_2+"].fix(fitted_dict["Mg_2+"])
@@ -258,45 +263,76 @@ def prepare_experiment():
         exp.save_model_hdf("src/electrodialysis_experiment/data/output/init1_rout2.h5")
 
     # Plotting
-    sim_Na = [
-        pyo.value(
-            model.sample_blk[i]
-            .proc.fs.prod.properties[0]
-            .conc_mol_phase_comp["Liq", "Na_+"]
-        )
-        for i in model.sample_set
+    ions = [
+        {"comp": "Na_+", "label": "Na⁺", "color": "blue", "marker": "triangle-up"},
+        {"comp": "Ca_2+", "label": "Ca²⁺", "color": "red", "marker": "triangle-up"},
+        {"comp": "Mg_2+", "label": "Mg²⁺", "color": "green", "marker": "triangle-up"},
     ]
-    exp_Na = target_df.loc[
-        :size, "fs.prod.properties[0].conc_mol_phase_comp['Liq','Na_+']"
-    ].tolist()
-    sim_Ca = [
-        pyo.value(
-            model.sample_blk[i]
-            .proc.fs.prod.properties[0]
-            .conc_mol_phase_comp["Liq", "Ca_2+"]
-        )
-        for i in model.sample_set
-    ]
-    exp_Ca = target_df.loc[
-        :size, "fs.prod.properties[0].conc_mol_phase_comp['Liq','Ca_2+']"
-    ].tolist()
-    sim_Mg = [
-        pyo.value(
-            model.sample_blk[i]
-            .proc.fs.prod.properties[0]
-            .conc_mol_phase_comp["Liq", "Mg_2+"]
-        )
-        for i in model.sample_set
-    ]
-    exp_Mg = target_df.loc[
-        :size, "fs.prod.properties[0].conc_mol_phase_comp['Liq','Mg_2+']"
-    ].tolist()
 
-    fig1 = plot_ion(exp_Na, sim_Na, "Na⁺", "blue", "triangle-up")
-    fig2 = plot_ion(exp_Ca, sim_Ca, "Ca²⁺", "red", "triangle-up")
-    fig3 = plot_ion(exp_Mg, sim_Mg, "Mg²⁺", "green", "triangle-up")
-    combined_fig = panel_from_figs([fig1, fig2, fig3], rows=1, cols=3)
-    combined_fig.show()
+    figs = typical_plot(
+        model=model,
+        target_df=target_df,
+        size=size,
+        ions=ions,
+        sample_indices=(0, 12),
+        show=True,
+    )
+
+
+def typical_plot(model, target_df, size, ions, sample_indices=(0), show=True):
+    """
+    Generate ion concentration and transport-number plots.
+
+    Parameters
+    ----------
+    model : Pyomo model
+    target_df : pd.DataFrame
+    size : int
+    exp_model : object
+        Model used in plot_trans_number_plotly.
+    ions : list of dict
+        Each dict: {"comp": str, "label": str, "color": str, "marker": str}
+    transport_indices : tuple of int
+    show : bool
+
+    Returns
+    -------
+    dict of Plotly figures
+    """
+
+    ion_figs = []
+    for ion in ions:
+        comp = ion["comp"]
+        sim_vals = [
+            pyo.value(
+                model.sample_blk[i]
+                .proc.fs.prod.properties[0]
+                .conc_mol_phase_comp["Liq", comp]
+            )
+            for i in model.sample_set
+        ]
+        col = f"fs.prod.properties[0].conc_mol_phase_comp['Liq','{comp}']"
+        exp_vals = target_df.loc[:size, col].tolist()
+        fig = plot_ion(exp_vals, sim_vals, ion["label"], ion["color"], ion["marker"])
+        ion_figs.append(fig)
+
+    combined_ions = panel_from_figs(ion_figs, rows=1, cols=len(ion_figs))
+    if show:
+        combined_ions.show()
+
+    transport_figs = [plot_trans_number_plotly(model, idx) for idx in sample_indices]
+    combined_transport = panel_from_figs(
+        transport_figs, rows=1, cols=len(transport_figs)
+    )
+    if show:
+        combined_transport.show()
+
+    return {
+        "ion_figs": ion_figs,
+        "combined_ions": combined_ions,
+        "transport_figs": transport_figs,
+        "combined_transport": combined_transport,
+    }
 
 
 def run_experiment():
@@ -320,7 +356,7 @@ def run_experiment():
     exp.add_equal_ocv_constraint()
 
     # Load a saved model snapshot as the initial point; this can be from the prepare_experiment() function above or another saved model snapshot that is believed to be a good initial point.
-    exp.load_model_data("src/electrodialysis_experiment/data/output/init0.h5")
+    exp.load_model_data("src/electrodialysis_experiment/data/output/init1_rout2.h5")
     exp.free_cation_transport_numbers_in_cem()
 
     model = exp.model
@@ -357,7 +393,7 @@ def run_experiment():
 
     solver = pyo.SolverFactory("ipopt")
     solver.options["max_iter"] = 1000  # Set maximum iterations
-    solver.options["tol"] = 1e-12
+    # solver.options["tol"] = 1e-12
     # solver.options["mu_strategy"] = "adaptive"
     # solver.options["halt_on_ampl_error"] = "yes"
     solver.options["nlp_scaling_method"] = (
@@ -372,7 +408,7 @@ def run_experiment():
     finally:
         # This runs both after success and after Ctrl-C
         exp.save_model_hdf(
-            "src/electrodialysis_experiment/data/output/m_concSSE_minimized_slkocvcu_with_surrloglin_newstru_frominit0.h5"
+            "src/electrodialysis_experiment/data/output/m_concSSE_minimized_slkocvcu_with_surrloglin_newstru_frominit1.h5"
         )
 
     for k, blk in model.sample_blk.items():
@@ -385,71 +421,19 @@ def run_experiment():
         v.conc_ratio_coef.pprint()
 
     ## Plotting
-    sim_Na = [
-        pyo.value(
-            model.sample_blk[i]
-            .proc.fs.prod.properties[0]
-            .conc_mol_phase_comp["Liq", "Na_+"]
-        )
-        for i in model.sample_set
+    ions = [
+        {"comp": "Na_+", "label": "Na⁺", "color": "blue", "marker": "triangle-up"},
+        {"comp": "Ca_2+", "label": "Ca²⁺", "color": "red", "marker": "triangle-up"},
+        {"comp": "Mg_2+", "label": "Mg²⁺", "color": "green", "marker": "triangle-up"},
     ]
-    exp_Na = target_df.loc[
-        :size, "fs.prod.properties[0].conc_mol_phase_comp['Liq','Na_+']"
-    ].tolist()
-    sim_Ca = [
-        pyo.value(
-            model.sample_blk[i]
-            .proc.fs.prod.properties[0]
-            .conc_mol_phase_comp["Liq", "Ca_2+"]
-        )
-        for i in model.sample_set
-    ]
-    exp_Ca = target_df.loc[
-        :size, "fs.prod.properties[0].conc_mol_phase_comp['Liq','Ca_2+']"
-    ].tolist()
-    sim_Mg = [
-        pyo.value(
-            model.sample_blk[i]
-            .proc.fs.prod.properties[0]
-            .conc_mol_phase_comp["Liq", "Mg_2+"]
-        )
-        for i in model.sample_set
-    ]
-    exp_Mg = target_df.loc[
-        :size, "fs.prod.properties[0].conc_mol_phase_comp['Liq','Mg_2+']"
-    ].tolist()
-
-    fig1 = plot_ion(exp_Na, sim_Na, "Na⁺", "blue", "square")
-    fig2 = plot_ion(exp_Ca, sim_Ca, "Ca²⁺", "red", "square")
-    fig3 = plot_ion(exp_Mg, sim_Mg, "Mg²⁺", "green", "square")
-    combined_fig = panel_from_figs([fig1, fig2, fig3], rows=1, cols=3)
-    combined_fig.show()
-
-
-def _get_ion_dict():
-    return {
-        "solute_list": ["Na_+", "Ca_2+", "Mg_2+", "Cl_-"],
-        "mw_data": {
-            "H2O": 18e-3,
-            "Na_+": 23e-3,
-            "Mg_2+": 24.305e-3,
-            "Ca_2+": 40.078e-3,
-            "Cl_-": 35.5e-3,
-        },
-        "diffusivity_data": {
-            ("Liq", "Na_+"): 1.33e-9,
-            ("Liq", "Ca_2+"): 0.793e-9,
-            ("Liq", "Mg_2+"): 0.705e-9,
-            ("Liq", "Cl_-"): 2.03e-9,
-        },  # referenced from https://www.aqion.de/site/diffusion-coefficients
-        "charge": {"Na_+": 1, "Mg_2+": 2, "Ca_2+": 2, "Cl_-": -1},
-        "membrane_transport_number": {
-            "Na_+": {"cem": 0.916, "aem": 0},
-            "Ca_2+": {"cem": 0.024, "aem": 0},
-            "Mg_2+": {"cem": 0.059, "aem": 0},
-            "Cl_-": {"cem": 0, "aem": 1},
-        },
-    }
+    figs = typical_plot(
+        model=model,
+        target_df=target_df,
+        size=size,
+        ions=ions,
+        sample_indices=(0, 12),
+        show=True,
+    )
 
 
 def check_badly_scaled_vars(model):
@@ -459,52 +443,6 @@ def check_badly_scaled_vars(model):
         found = True
     if not found:
         print("No badly scaled variables found.")
-
-
-def plot_results(model, target_df, size):
-    sim_Na = [
-        pyo.value(
-            model.sample_blk[i].fs.prod.properties[0].conc_mol_phase_comp["Liq", "Na_+"]
-        )
-        for i in model.sample_set
-    ]
-    exp_Na = target_df.loc[
-        :size, "fs.prod.properties[0].conc_mol_phase_comp['Liq','Na_+']"
-    ].tolist()
-    sim_Ca = [
-        pyo.value(
-            model.sample_blk[i]
-            .fs.prod.properties[0]
-            .conc_mol_phase_comp["Liq", "Ca_2+"]
-        )
-        for i in model.sample_set
-    ]
-    exp_Ca = target_df.loc[
-        :size, "fs.prod.properties[0].conc_mol_phase_comp['Liq','Ca_2+']"
-    ].tolist()
-    sim_Mg = [
-        pyo.value(
-            model.sample_blk[i]
-            .fs.prod.properties[0]
-            .conc_mol_phase_comp["Liq", "Mg_2+"]
-        )
-        for i in model.sample_set
-    ]
-    exp_Mg = target_df.loc[
-        :size, "fs.prod.properties[0].conc_mol_phase_comp['Liq','Mg_2+']"
-    ].tolist()
-    sim_CurrD = [
-        pyo.value(model.sample_blk[i].fs.current_density_avg) for i in model.sample_set
-    ]
-    exp_CurrD = target_df.loc[:size, "fs.current_density_avg"].tolist()
-
-    plot_ion(exp_Na, sim_Na, "Na⁺", "blue", "circle")
-    plot_ion(exp_Ca, sim_Ca, "Ca²⁺", "red", "square")
-    plot_ion(exp_Mg, sim_Mg, "Mg²⁺", "green", "diamond")
-    plot_current_dens(exp_CurrD, sim_CurrD, "Current Density", "purple", "cross")
-
-    for i in range(0, size):
-        plot_trans_number_plotly(model, i)
 
 
 def data_cvs2parquet():
@@ -649,12 +587,12 @@ def plot_current_dens(exp, sim, ion_name, color, marker):
 
 def plot_trans_number_plotly(model, sample_idx):
     ions = ["Na_+", "Ca_2+", "Mg_2+"]
-    x_vals = list(model.length_domain)
+    x_vals = list(model.sample_blk[0].proc.fs.EDstack.diluate.length_domain)
     fig = go.Figure()
     for ion in ions:
         y_vals = [
             pyo.value(
-                model.sample_blk[sample_idx].fs.EDstack.ion_trans_number_membrane[
+                model.sample_blk[sample_idx].proc.fs.EDstack.ion_trans_number_membrane[
                     "cem", ion, x
                 ]
             )

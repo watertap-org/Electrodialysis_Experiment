@@ -457,6 +457,9 @@ class MasterExperimentBuilder:
                     self.model.sample_blk[i].proc.fs.EDstack.ion_trans_number_membrane[
                         "cem", ion, :
                     ].unfix()
+                    _log.info(
+                        f"Unfixed cation transport number in CEM for ion '{ion}' in block {i}."
+                    )
 
     def add_cation_transport_number_sum_constraint(self):
         # Add constraint: sum of ion transport numbers for cations at each x in length_domain equals 1
@@ -489,6 +492,7 @@ class MasterExperimentBuilder:
                 m.ocv_equality_cons.add(
                     first_sample.proc.fs.ocv == m.sample_blk[sample_idx].proc.fs.ocv
                 )
+        _log.info("Added OCV equality constraints across all samples.")
 
     def add_log_linear_surr_coef_constraint(self):
         m = self.model

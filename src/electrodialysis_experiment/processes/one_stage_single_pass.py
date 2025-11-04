@@ -66,12 +66,8 @@ from electrodialysis_experiment.schema.config.process_config_schema import (
     OneStageSinglePassConfig,
 )
 from electrodialysis_experiment.utils.value_setting import apply_value_updates_from_yaml
-from electrodialysis_experiment.utils.solver_configuring import (
-    get_ipopt_configed_solver,
-)
 from electrodialysis_experiment.schema.experiment.data import FluidCondition
 from electrodialysis_experiment.utils.user_scaling import check_badly_scaled_vars
-
 
 _log = idaeslogger.getIdaesLogger(__name__)
 
