@@ -448,7 +448,7 @@ def check_badly_scaled_vars(model):
 def data_cvs2parquet():
 
     # Prepare data
-    df = pd.read_csv("data/SED_ref_v4_tnupd.csv", skiprows=1)
+    df = pd.read_csv("src/electrodialysis_experiment/data/raw/SED_ref_v4_tnupd.csv", skiprows=1)
     df = df.dropna(how="all")
     # display(df)
     x_fields = [
@@ -457,6 +457,7 @@ def data_cvs2parquet():
         "CfCa",
         "CfMg",
         "Volt",
+        "Curr",
         "r_cem",
         "k_cem",
         "r_aem",
@@ -483,16 +484,20 @@ def data_cvs2parquet():
     y_data[["CpNa", "CpCa", "CpMg"]] = y_data[["CpNa", "CpCa", "CpMg"]] * 1000
     y_data["CurrD"] = (
         y_data["CurrD"] * 10
-    )  # Convert current density from A/m2 to A/m3 (assuming 1 m2 area for simplicity)
-
+    )  
     # All data is in SI thus far.
 
     display(x_data)
     display(y_data)
     dt_x_y = pd.concat([x_data, y_data], axis=1)
-    dt_x_y.to_parquet("data/dt_x_y_4_061025.parquet", index=False)
+    dt_x_y.to_parquet("src/electrodialysis_experiment/data/raw/dt_SEDv4_021125.parquet", index=False)
 
-
+def compare_data():
+    df1 = pd.read_parquet("src/electrodialysis_experiment/data/raw/dt_x_y_4_061025.parquet")
+    df2 = pd.read_parquet("src/electrodialysis_experiment/data/raw/dt_SEDv4_021125.parquet")
+    display(df1)
+    display(df2)
+    
 def plot_ion(exp, sim, ion_name, color, marker):
     min_val = np.floor(min(exp + sim))
     max_val = np.ceil(max(exp + sim)) + 0.5
@@ -775,3 +780,4 @@ if __name__ == "__main__":
     # sample_12_test()
     # plot_run()
     # data_cvs2parquet()
+    # compare_data()
