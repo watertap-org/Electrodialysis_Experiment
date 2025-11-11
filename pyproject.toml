@@ -30,6 +30,8 @@ dependencies = [
   "tables>=3.8",
   "PyYAML>=6.0",
   "watertap>=1.2.0",
+  "pydantic>=2.9",
+  "IPython>=8.15",
 ]
 
 # Optional dependency groups

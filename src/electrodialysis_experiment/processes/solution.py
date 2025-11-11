@@ -78,10 +78,7 @@ from idaes.core.util.exceptions import (
 )
 import idaes.core.util.scaling as iscale
 from watertap.core.util.scaling import transform_property_constraints
-from watertap.tools.oli_api.util.watertap_to_oli_helper_functions import (
-    get_charge,
-    get_molar_mass_quantity,
-)
+
 
 __author__ = "Adam Atia, Xiangyu Bi, Hunter Barber, Kurban Sitterley"
 # Set up logger
@@ -409,38 +406,13 @@ class MCASParameterData(PhysicalParameterBlock):
             else:
                 self.neutral_set.add(j)
 
-        # Check for molecular weight data
-        # if not len(self.config.mw_data):
-        #     raise ConfigurationError(
-        #         "The mw_data argument was not provided while instantiating the MCAS property model. Provide a dictionary with solute names and associated molecular weights as keys and values, respectively."
-        #     )
-        mw_comp = self.config.mw_data
-        if len(mw_comp) < len(self.config.solute_list):
-            track_mw = {}
-            for i in self.config.solute_list:
-                if i not in mw_comp.keys():
-                    # if a solute was not provided any mw data, try grabbing automatically based on solute name
-                    try:
-                        mw_comp[i] = get_molar_mass_quantity(i)
-                    # this overrides exception from helper functions so that we can track which solutes couldn't be populated with data
-                    except IOError as exc:
-                        track_mw.update({i: exc})
-                else:
-                    pass
-            if len(track_mw) > 0:
-                raise ConfigurationError(
-                    f"Molecular weight data could not be obtained for the following solutes and no data were provided\n: {track_mw}."
-                )
-
-        # TODO: consider turning parameters into variables for future param estimation
-        mw_temp = {"H2O": 18e-3}
-        mw_temp.update(mw_comp)
+        
         # molecular weight
         self.mw_comp = Param(
             self.component_list,
             mutable=True,
             default=18e-3,
-            initialize=mw_temp,
+            initialize=self.config.mw_data,
             units=pyunits.kg / pyunits.mol,
             doc="Molecular weight",
         )
