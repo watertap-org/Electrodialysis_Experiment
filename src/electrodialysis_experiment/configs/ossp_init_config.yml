@@ -19,11 +19,11 @@ InitialValue:
 
     # --- ED stack ---
     ## for operation_mode: Constant_Voltage
-    - scalarVar: fs.experimental_voltage
-      value: 10
+    # - scalarVar: fs.experimental_voltage
+    #   value: 10
     ## for operation_mode: Constant_Current
-    # - scalarVar: fs.EDstack.current_applied
-    #   value: 0.3
+    - scalarVar: fs.EDstack.current_applied
+      value: 0.3
     - scalarVar: fs.ocv
       value: 4.35
     - scalarVar: fs.EDstack.pressure_drop

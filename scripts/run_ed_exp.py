@@ -110,14 +110,14 @@ def plot_run():
 
 def prepare_experiment():
     dt = pd.read_parquet(
-        "src/electrodialysis_experiment/data/raw/dt_x_y_4_061025.parquet"
+        "src/electrodialysis_experiment/data/raw/dt_SEDv4_021125.parquet"
     )
     # display(dt)
     size = 25
     # Prepare data for the experiment
     fl_dt, param_dt, ti_data, ci_data = (
         ds.prepare_fluid_cond_dt(dt),
-        ds.prepare_upd_param_dt(dt),
+        ds.prepare_upd_param_dt_cc(dt),
         ds.prepare_cation_cem_transport_number_estimate(dt),
         ds.prepare_cation_product_conc(dt),
     )
@@ -145,12 +145,30 @@ def prepare_experiment():
     #     solver=solver,
     # )
     # The model snapshot is saved after this step. This can be used to skip the conditioning step above, provided that a conditioned model snapshot has been obtained.
-    # exp.save_model_hdf("src/electrodialysis_experiment/data/output/init0.h5")
-
-    ## OR
+    #exp.save_model_hdf("src/electrodialysis_experiment/data/output/cc_init0.h5")
+     ## OR
     # Load the saved model snapshot; this can be used to skip the conditioning step above, provided that a conditioned model snapshot has been obtained.
-    exp.load_model_data("src/electrodialysis_experiment/data/output/init0.h5")
+    exp.load_model_data("src/electrodialysis_experiment/data/output/cc_init0.h5")
+    
     model = exp.model
+
+    # Plotting
+    ions = [
+        {"comp": "Na_+", "label": "Na⁺", "color": "blue", "marker": "square"},
+        {"comp": "Ca_2+", "label": "Ca²⁺", "color": "red", "marker": "square"},
+        {"comp": "Mg_2+", "label": "Mg²⁺", "color": "green", "marker": "square"},
+    ]
+
+    figs = typical_plot(
+        model=model,
+        target_df=target_df,
+        size=size,
+        ions=ions,
+        sample_indices=(0, 12),
+        show=True,
+    )
+
+   
     # check_badly_scaled_vars(exp.model)
 
     # iscale.calculate_scaling_factors(exp.model)
@@ -229,54 +247,54 @@ def prepare_experiment():
 
     # Rountine 2. Solve the entire model at DOF=0 to get a better initial point.
     # model = exp.model
-    for i, v in exp.model.cation_cem_transport_number_simulator.items():
-        v.conc_ratio_coef["Ca_2+"].fix(fitted_dict["Ca_2+"])
-        v.conc_ratio_coef["Mg_2+"].fix(fitted_dict["Mg_2+"])
-    exp.free_cation_transport_numbers_in_cem()
-    exp.add_equal_ocv_constraint()
+    # for i, v in exp.model.cation_cem_transport_number_simulator.items():
+    #     v.conc_ratio_coef["Ca_2+"].fix(fitted_dict["Ca_2+"])
+    #     v.conc_ratio_coef["Mg_2+"].fix(fitted_dict["Mg_2+"])
+    # exp.free_cation_transport_numbers_in_cem()
+    # exp.add_equal_ocv_constraint()
 
-    for blk in model.sample_blk.values():
-        blk.proc.fs.ocv.unfix()
-        blk.proc.fs.ocv.setlb(0)
-        blk.proc.fs.ocv.setub(5.5)
-        blk.proc.fs.EDstack.slack_resistance.fix(0)
-        # blk.proc.fs.EDstack.current_utilization.fix(1)
-        blk.proc.fs.EDstack.current_utilization.unfix()
-        blk.proc.fs.EDstack.current_utilization.setlb(0.2)
-        blk.proc.fs.EDstack.current_utilization.setub(1.0)
-    print(f"DOF={mstat.degrees_of_freedom(model)}")
-    solver = pyo.SolverFactory("ipopt")
-    solver.options["max_iter"] = 1000  # Set maximum iterations
-    solver.options["mu_strategy"] = "adaptive"
-    # solver.options["halt_on_ampl_error"] = "yes"
-    solver.options["nlp_scaling_method"] = (
-        "user-scaling"  # Use user-defined scaling user-scaling
-    )
-    solver.options["linear_solver"] = "mumps"
+    # for blk in model.sample_blk.values():
+    #     blk.proc.fs.ocv.unfix()
+    #     blk.proc.fs.ocv.setlb(0)
+    #     blk.proc.fs.ocv.setub(5.5)
+    #     blk.proc.fs.EDstack.slack_resistance.fix(0)
+    #     # blk.proc.fs.EDstack.current_utilization.fix(1)
+    #     blk.proc.fs.EDstack.current_utilization.unfix()
+    #     blk.proc.fs.EDstack.current_utilization.setlb(0.2)
+    #     blk.proc.fs.EDstack.current_utilization.setub(1.0)
+    # print(f"DOF={mstat.degrees_of_freedom(model)}")
+    # solver = pyo.SolverFactory("ipopt")
+    # solver.options["max_iter"] = 1000  # Set maximum iterations
+    # solver.options["mu_strategy"] = "adaptive"
+    # # solver.options["halt_on_ampl_error"] = "yes"
+    # solver.options["nlp_scaling_method"] = (
+    #     "user-scaling"  # Use user-defined scaling user-scaling
+    # )
+    # solver.options["linear_solver"] = "mumps"
 
-    try:
-        results = solver.solve(model, tee=True)
-    except KeyboardInterrupt:
-        print("\n[!] Solver interrupted by user. Saving snapshot...")
-    finally:
-        # This runs both after success and after Ctrl-C
-        exp.save_model_hdf("src/electrodialysis_experiment/data/output/init1_rout2.h5")
+    # try:
+    #     results = solver.solve(model, tee=True)
+    # except KeyboardInterrupt:
+    #     print("\n[!] Solver interrupted by user. Saving snapshot...")
+    # finally:
+    #     # This runs both after success and after Ctrl-C
+    #     exp.save_model_hdf("src/electrodialysis_experiment/data/output/cc_init1_rout2.h5")
 
-    # Plotting
-    ions = [
-        {"comp": "Na_+", "label": "Na⁺", "color": "blue", "marker": "triangle-up"},
-        {"comp": "Ca_2+", "label": "Ca²⁺", "color": "red", "marker": "triangle-up"},
-        {"comp": "Mg_2+", "label": "Mg²⁺", "color": "green", "marker": "triangle-up"},
-    ]
+    # # Plotting
+    # ions = [
+    #     {"comp": "Na_+", "label": "Na⁺", "color": "blue", "marker": "triangle-up"},
+    #     {"comp": "Ca_2+", "label": "Ca²⁺", "color": "red", "marker": "triangle-up"},
+    #     {"comp": "Mg_2+", "label": "Mg²⁺", "color": "green", "marker": "triangle-up"},
+    # ]
 
-    figs = typical_plot(
-        model=model,
-        target_df=target_df,
-        size=size,
-        ions=ions,
-        sample_indices=(0, 12),
-        show=True,
-    )
+    # figs = typical_plot(
+    #     model=model,
+    #     target_df=target_df,
+    #     size=size,
+    #     ions=ions,
+    #     sample_indices=(0, 12),
+    #     show=True,
+    # )
 
 
 def typical_plot(model, target_df, size, ions, sample_indices=(0), show=True):
@@ -384,7 +402,7 @@ def run_experiment():
         "fs.prod.properties[0].conc_mol_phase_comp['Liq','Na_+']": 0.1,
         "fs.prod.properties[0].conc_mol_phase_comp['Liq','Ca_2+']": 1,
         "fs.prod.properties[0].conc_mol_phase_comp['Liq','Mg_2+']": 10,
-        "fs.current_density_avg": 0.05,
+        # "fs.current_density_avg":1,
     }
     target_var_list, target_df = ds.prepare_target_variable_dt(dt)
     exp.add_sse_objective_of_selected_variables(
@@ -448,7 +466,7 @@ def check_badly_scaled_vars(model):
 def data_cvs2parquet():
 
     # Prepare data
-    df = pd.read_csv("src/electrodialysis_experiment/data/raw/SED_ref_v4_tnupd.csv", skiprows=1)
+    df = pd.read_csv("data/SED_ref_v4_tnupd.csv", skiprows=1)
     df = df.dropna(how="all")
     # display(df)
     x_fields = [
@@ -457,7 +475,6 @@ def data_cvs2parquet():
         "CfCa",
         "CfMg",
         "Volt",
-        "Curr",
         "r_cem",
         "k_cem",
         "r_aem",
@@ -484,20 +501,16 @@ def data_cvs2parquet():
     y_data[["CpNa", "CpCa", "CpMg"]] = y_data[["CpNa", "CpCa", "CpMg"]] * 1000
     y_data["CurrD"] = (
         y_data["CurrD"] * 10
-    )  
+    )  # Convert current density from A/m2 to A/m3 (assuming 1 m2 area for simplicity)
+
     # All data is in SI thus far.
 
     display(x_data)
     display(y_data)
     dt_x_y = pd.concat([x_data, y_data], axis=1)
-    dt_x_y.to_parquet("src/electrodialysis_experiment/data/raw/dt_SEDv4_021125.parquet", index=False)
+    dt_x_y.to_parquet("data/dt_x_y_4_061025.parquet", index=False)
 
-def compare_data():
-    df1 = pd.read_parquet("src/electrodialysis_experiment/data/raw/dt_x_y_4_061025.parquet")
-    df2 = pd.read_parquet("src/electrodialysis_experiment/data/raw/dt_SEDv4_021125.parquet")
-    display(df1)
-    display(df2)
-    
+
 def plot_ion(exp, sim, ion_name, color, marker):
     min_val = np.floor(min(exp + sim))
     max_val = np.ceil(max(exp + sim)) + 0.5
@@ -583,34 +596,11 @@ def plot_current_dens(exp, sim, ion_name, color, marker):
         title=f"Simulated vs Experimental {ion_name} Concentration",
         xaxis_title="Experimental (A/m²)",
         yaxis_title="Simulated (A/m²)",
-        xaxis=dict(
-            showline=True,
-            linewidth=2,
-            linecolor="black",
-            mirror=True,
-            ticks="outside",
-            title_font=dict(size=16),
-            tickfont=dict(size=14),
-            range=[min_val, max_val],
-        ),
-        yaxis=dict(
-            showline=True,
-            linewidth=2,
-            linecolor="black",
-            mirror=True,
-            ticks="outside",
-            title_font=dict(size=16),
-            tickfont=dict(size=14),
-            range=[min_val, max_val],
-        ),
-        showlegend=False,
-        width=600,
-        height=600,
-        paper_bgcolor="white",
-        plot_bgcolor="white",
+        legend_title="current density, average",
+        width=700,
+        height=500,
     )
     fig.show()
-    return fig
 
 
 def plot_trans_number_plotly(model, sample_idx):
@@ -773,11 +763,10 @@ def panel_from_figs(
 
 
 if __name__ == "__main__":
-    run_experiment()
-    # prepare_experiment()
+    # run_experiment()
+    prepare_experiment()
     # single_experiment_test()
     # random_test()
     # sample_12_test()
     # plot_run()
     # data_cvs2parquet()
-    # compare_data()
