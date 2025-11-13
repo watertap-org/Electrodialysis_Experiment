@@ -13,12 +13,12 @@ from idaes.core.solvers import get_solver
 
 def main():
     edt = pd.read_parquet(
-        "src/electrodialysis_experiment/data/raw/dt_x_y_4_061025.parquet"
+        "src/electrodialysis_experiment/data/raw/dt_SEDv4_021125.parquet"
     )
     ind=0
     display(edt)
     fluid_conditions = dt.prepare_fluid_cond_dt(edt)
-    exp_setup_params = dt.prepare_upd_param_dt(edt)
+    exp_setup_params = dt.prepare_upd_param_dt_cv(edt)
     t_est = dt.prepare_cation_cem_transport_number_estimate(edt)
     print(exp_setup_params[ind])
     test_cond = fluid_conditions[ind]

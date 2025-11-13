@@ -50,9 +50,7 @@ import numpy as np
 import idaes.core.util.scaling as iscale
 import idaes.logger as idaeslogger
 
-from electrodialysis_experiment.processes.base import (
-    ED_base,
-)
+from electrodialysis_experiment.processes.base import ED_base, ElectricalOperationMode
 
 from electrodialysis_experiment.utils.user_scaling import apply_scaling_from_yaml
 
@@ -229,6 +227,41 @@ class OneStageSinglePassData(ProcessBlockData):
             * self.fs.prod.properties[0].flow_vol_phase["Liq"]
         )
 
+        if (
+            self.fs.EDstack.config.operation_mode
+            == ElectricalOperationMode.Constant_Voltage
+        ):
+            print("Constant_Voltage mode selected.")
+            self.fs.current_density_avg = Expression(
+                expr=self.fs.EDstack.diluate.power_electrical_x[0, 1]
+                / (
+                    self.fs.EDstack.voltage_applied[0]
+                    * self.fs.EDstack.cell_width
+                    * self.fs.EDstack.cell_length
+                )
+            )
+            self.fs.voltage_avg = Expression(expr=self.fs.EDstack.voltage_applied[0])
+            self.fs.voltage_per_cp = Expression(
+                expr=self.fs.EDstack.voltage_applied[0] / self.fs.EDstack.cell_pair_num
+            )
+        elif (
+            self.fs.EDstack.config.operation_mode
+            == ElectricalOperationMode.Constant_Current
+        ):
+            print("Constant_Current mode selected.")
+
+            self.fs.current_density_avg = Expression(
+                expr=self.fs.EDstack.current_applied[0]
+                / (self.fs.EDstack.cell_width * self.fs.EDstack.cell_length)
+            )
+            self.fs.voltage_avg = Expression(
+                expr=self.fs.EDstack.diluate.power_electrical_x[0, 1]
+                / (self.fs.EDstack.current_applied[0])
+            )
+            self.fs.voltage_per_cp = Expression(
+                expr=self.fs.voltage_avg / self.fs.EDstack.cell_pair_num
+            )
+
         # Stack voltages
         self.fs.experimental_voltage = Var(
             initialize=100,
@@ -242,9 +275,9 @@ class OneStageSinglePassData(ProcessBlockData):
             units=pyunits.volt,
             doc="Stack open circuit voltage",
         )
+
         self.fs.eq_experimental_voltage = Constraint(
-            expr=self.fs.experimental_voltage
-            == self.fs.ocv + self.fs.EDstack.voltage_applied[0]
+            expr=self.fs.experimental_voltage == self.fs.ocv + self.fs.voltage_avg
         )
 
         # NaCl-equivalent salinity calculations (cation-based weighting)
@@ -275,17 +308,6 @@ class OneStageSinglePassData(ProcessBlockData):
             expr=self.fs.EDstack.cell_width
             * self.fs.EDstack.cell_length
             * self.fs.EDstack.cell_pair_num
-        )
-        self.fs.voltage_per_cp = Expression(
-            expr=self.fs.EDstack.voltage_applied[0] / self.fs.EDstack.cell_pair_num
-        )
-        self.fs.current_density_avg = Expression(
-            expr=self.fs.EDstack.diluate.power_electrical_x[0, 1]
-            / (
-                self.fs.EDstack.voltage_applied[0]
-                * self.fs.EDstack.cell_width
-                * self.fs.EDstack.cell_length
-            )
         )
 
     def _wire_arcs(self):
@@ -347,7 +369,7 @@ class OneStageSinglePassData(ProcessBlockData):
                 ),
             )
             iscale.calculate_scaling_factors(self.fs)
-            #check_badly_scaled_vars(self.fs, small=1e-2, large=1e2)
+            # check_badly_scaled_vars(self.fs, small=1e-2, large=1e2)
             res = self.solve(self.fs, solver=solver, tee=tee)
             if str(res.solver.termination_condition) != "optimal":
                 _log.warning(
@@ -462,7 +484,9 @@ class OneStageSinglePassData(ProcessBlockData):
     ):
         for ion, t_num in t_cation_cem_dict.items():
             self.fs.EDstack.ion_trans_number_membrane["cem", ion, :].fix(t_num)
-            _log.info(f"Fixed cation transport number in CEM for ion '{ion}' to {t_num}.")
+            _log.info(
+                f"Fixed cation transport number in CEM for ion '{ion}' to {t_num}."
+            )
 
     def update_var_values(self, updates: dict | BaseModel) -> None:
         """
@@ -480,9 +504,9 @@ class OneStageSinglePassData(ProcessBlockData):
         elif isinstance(updates, BaseModel):
             # works for both v1 (.dict()) and v2 (.model_dump())
             if hasattr(updates, "model_dump"):
-                update_dict = updates.model_dump(exclude_unset=True)
+                update_dict = updates.model_dump(exclude_unset=True, exclude_none=True)
             else:
-                update_dict = updates.dict()
+                update_dict = updates.dict(exclude_none=True)
         else:
             raise TypeError(f"Expected dict or BaseModel, got {type(updates).__name__}")
 
@@ -576,7 +600,7 @@ class OneStageSinglePassData(ProcessBlockData):
                 value(self.fs.EDstack.cell_length),
                 value(self.fs.EDstack.cell_width),
                 value(self.fs.experimental_voltage),
-                value(self.fs.EDstack.voltage_applied[0]),
+                value(self.fs.voltage_avg),
                 value(self.fs.voltage_per_cp),
             ],
             columns=["value"],
