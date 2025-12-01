@@ -61,6 +61,7 @@ TargetVariableMapping = {
     "fs.prod.properties[0].conc_mol_phase_comp['Liq','Ca_2+']": "CpCa",
     "fs.prod.properties[0].conc_mol_phase_comp['Liq','Mg_2+']": "CpMg",
     "fs.current_density_avg": "CurrD",
+    "fs.voltage_avg": "Volt",
 }
 
 # -------------------

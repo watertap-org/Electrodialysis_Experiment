@@ -49,7 +49,7 @@ import pandas as pd
 import numpy as np
 import idaes.core.util.scaling as iscale
 import idaes.logger as idaeslogger
-
+import plotly.graph_objs as go
 from electrodialysis_experiment.processes.base import ED_base, ElectricalOperationMode
 
 from electrodialysis_experiment.utils.user_scaling import apply_scaling_from_yaml
@@ -239,6 +239,12 @@ class OneStageSinglePassData(ProcessBlockData):
                     * self.fs.EDstack.cell_width
                     * self.fs.EDstack.cell_length
                 )
+            )
+            self.fs.EDstack.current_applied = Expression(
+                [0],
+                expr=self.fs.current_density_avg
+                * self.fs.EDstack.cell_width
+                * self.fs.EDstack.cell_length,
             )
             self.fs.voltage_avg = Expression(expr=self.fs.EDstack.voltage_applied[0])
             self.fs.voltage_per_cp = Expression(
@@ -602,6 +608,8 @@ class OneStageSinglePassData(ProcessBlockData):
                 value(self.fs.experimental_voltage),
                 value(self.fs.voltage_avg),
                 value(self.fs.voltage_per_cp),
+                value(self.fs.EDstack.current_applied[0]),
+                value(self.fs.EDstack.current_utilization),
             ],
             columns=["value"],
             index=[
@@ -614,6 +622,8 @@ class OneStageSinglePassData(ProcessBlockData):
                 "Experimental voltage, V",
                 "Cell voltage, V",
                 "Cell-pair voltage, V",
+                "Stack current, A",
+                "Current Utilization",
             ],
         )
         print(pm_table)
@@ -670,6 +680,52 @@ class OneStageSinglePassData(ProcessBlockData):
         )
         pd.set_option("display.max_columns", None)
         print(pt_table)
+
+    def plot_lengthwise_profile(self, var_name: str, *non_length_index_set):
+        var = self.search_var_by_name(self.fs.EDstack, var_name)
+        if var is None:
+            raise KeyError(f"Variable '{var_name}' not found in ED stack.")
+        if not (
+            self.fs.EDstack.diluate.length_domain in var.index_set().set_tuple
+            and var.is_indexed()
+        ):
+            # print(var.index_set())
+            raise TypeError(f"Variable '{var_name}' is not indexed over length domain.")
+        ## plotting by plotly
+        x_vals = [value(x) for x in self.fs.EDstack.diluate.length_domain]
+        y_vals = [value(var[0, x]) for x in self.fs.EDstack.diluate.length_domain]
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=x_vals, y=y_vals, mode="lines", name=var_name))
+        fig.update_layout(
+            xaxis_title="Length Domain (x/L)",
+            yaxis_title=var_name,
+            xaxis=dict(
+                showline=True,
+                linewidth=2,
+                linecolor="black",
+                mirror=True,
+                ticks="outside",
+                title_font=dict(size=16),
+                tickfont=dict(size=14),
+                range=[0, 1],
+            ),
+            yaxis=dict(
+                showline=True,
+                linewidth=2,
+                linecolor="black",
+                mirror=True,
+                ticks="outside",
+                title_font=dict(size=16),
+                tickfont=dict(size=14),
+            ),
+            width=700,
+            height=500,
+            paper_bgcolor="white",
+            plot_bgcolor="white",
+        )
+        fig.show()
+        return fig
 
 
 OneStageSinglePass.from_yaml = OneStageSinglePassData.from_yaml
