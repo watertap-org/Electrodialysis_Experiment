@@ -681,7 +681,9 @@ class OneStageSinglePassData(ProcessBlockData):
         pd.set_option("display.max_columns", None)
         print(pt_table)
 
-    def plot_lengthwise_profile(self, var_name: str, *non_length_index_set):
+    def plot_lengthwise_profile(
+        self, var_name: str, *non_length_index_set, precision: float = None
+    ):
         var = self.search_var_by_name(self.fs.EDstack, var_name)
         if var is None:
             raise KeyError(f"Variable '{var_name}' not found in ED stack.")
@@ -694,6 +696,8 @@ class OneStageSinglePassData(ProcessBlockData):
         ## plotting by plotly
         x_vals = [value(x) for x in self.fs.EDstack.diluate.length_domain]
         y_vals = [value(var[0, x]) for x in self.fs.EDstack.diluate.length_domain]
+        if precision is not None:
+            y_vals = [round(y, precision) for y in y_vals]
 
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=x_vals, y=y_vals, mode="lines", name=var_name))
