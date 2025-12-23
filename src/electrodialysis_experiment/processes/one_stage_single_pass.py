@@ -682,20 +682,78 @@ class OneStageSinglePassData(ProcessBlockData):
         print(pt_table)
 
     def plot_lengthwise_profile(
-        self, var_name: str, *non_length_index_set, precision: float = None
-    ):
+        self, var_name: str, default_time: float = 0, *, precision: int | None = None, **fixed_index
+     ):
+    
         var = self.search_var_by_name(self.fs.EDstack, var_name)
         if var is None:
             raise KeyError(f"Variable '{var_name}' not found in ED stack.")
-        if not (
-            self.fs.EDstack.diluate.length_domain in var.index_set().set_tuple
-            and var.is_indexed()
-        ):
-            # print(var.index_set())
-            raise TypeError(f"Variable '{var_name}' is not indexed over length domain.")
-        ## plotting by plotly
-        x_vals = [value(x) for x in self.fs.EDstack.diluate.length_domain]
-        y_vals = [value(var[0, x]) for x in self.fs.EDstack.diluate.length_domain]
+        if not var.is_indexed():
+            raise TypeError(f"Variable '{var_name}' is not indexed.")
+
+        length_domain = self.fs.EDstack.diluate.length_domain
+        subsets = list(var.index_set().subsets())
+        if not any(s is length_domain for s in subsets):    
+           raise TypeError(f"Variable '{var_name}' is not indexed over length domain.")
+
+        provided_by_set = {}
+        remaining_str_keys = {}
+
+        for k, v in fixed_index.items():
+            if hasattr(k, "dimen"):  # Pyomo Set-like
+                provided_by_set[id(k)] = v
+            else:
+                remaining_str_keys[k] = v
+
+    
+        def _resolve_subset_for_key(key: str):
+            """
+            Helper: resolve string key to exactly one index set
+            """
+            candidates = []
+            for s in subsets:
+                sname = getattr(s, "name", "") or ""
+                if sname == key or sname.endswith(key):
+                    candidates.append(s)
+            if len(candidates) == 1:
+                return candidates[0]
+            if len(candidates) == 0:
+                avail = [getattr(s, "name", str(s)) for s in subsets]
+                raise KeyError(f"Key '{key}' did not match any index set. Available: {avail}")
+            avail = [getattr(s, "name", str(s)) for s in candidates]
+            raise KeyError(
+                f"Key '{key}' matched multiple index sets: {avail}. "
+                "Use the Set object as the key instead."
+            )
+
+        # Resolve string keys
+        for key, val in remaining_str_keys.items():
+            s = _resolve_subset_for_key(key)
+            provided_by_set[id(s)] = val
+
+        # Default time=0 if needed
+        time_set = getattr(self.fs, "time", None)
+        if time_set is not None and any(s is time_set for s in subsets) and id(time_set) not in provided_by_set:
+            provided_by_set[id(time_set)] = default_time
+
+       
+        x_vals = [value(x) for x in length_domain]
+        y_vals = []
+        for x in length_domain:
+            key = []
+            for s in subsets:
+                if s is length_domain:
+                    key.append(x)
+                else:
+                    if id(s) in provided_by_set:
+                       key.append(provided_by_set[id(s)])
+                    else:
+                        raise KeyError(
+                            f"Missing index for set '{getattr(s, 'name', str(s))}'. "
+                            "Provide it via a string suffix (e.g. ion_set=...) "
+                            "or using the Set object as the key."
+                        )
+            y_vals.append(value(var[tuple(key)]))
         if precision is not None:
             y_vals = [round(y, precision) for y in y_vals]
 

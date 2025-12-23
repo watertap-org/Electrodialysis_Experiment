@@ -44,6 +44,8 @@ def main():
     m.proc.display_selected_model_metrics(solutes)
 
     m.proc.plot_lengthwise_profile("current_density_x", precision=3)
+    m.proc.plot_lengthwise_profile("diluate.conc_mol_phase_comp", precision=3, ion_set="Na_+", membrane_set="cem")
+    m.proc.plot_lengthwise_profile("ion_trans_number_membrane", precision=3, ion_set="Mg_2+", membrane_set="cem")
 
 if __name__ == "__main__":
     main()
