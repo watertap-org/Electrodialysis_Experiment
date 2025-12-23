@@ -4,7 +4,7 @@ ed_stack:
   pressure_drop_method: experimental
   #friction_factor_method: fixed
   #hydraulic_diameter_method: conventional
-  operation_mode: Constant_Voltage
+  operation_mode: Constant_Current
   has_nonohmic_potential_membrane: true
   has_Nernst_diffusion_layer: true
   limiting_current_density_method: InitialValue

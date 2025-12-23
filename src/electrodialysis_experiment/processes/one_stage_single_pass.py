@@ -49,10 +49,8 @@ import pandas as pd
 import numpy as np
 import idaes.core.util.scaling as iscale
 import idaes.logger as idaeslogger
-
-from electrodialysis_experiment.processes.base import (
-    ED_base,
-)
+import plotly.graph_objs as go
+from electrodialysis_experiment.processes.base import ED_base, ElectricalOperationMode
 
 from electrodialysis_experiment.utils.user_scaling import apply_scaling_from_yaml
 
@@ -229,6 +227,47 @@ class OneStageSinglePassData(ProcessBlockData):
             * self.fs.prod.properties[0].flow_vol_phase["Liq"]
         )
 
+        if (
+            self.fs.EDstack.config.operation_mode
+            == ElectricalOperationMode.Constant_Voltage
+        ):
+            print("Constant_Voltage mode selected.")
+            self.fs.current_density_avg = Expression(
+                expr=self.fs.EDstack.diluate.power_electrical_x[0, 1]
+                / (
+                    self.fs.EDstack.voltage_applied[0]
+                    * self.fs.EDstack.cell_width
+                    * self.fs.EDstack.cell_length
+                )
+            )
+            self.fs.EDstack.current_applied = Expression(
+                [0],
+                expr=self.fs.current_density_avg
+                * self.fs.EDstack.cell_width
+                * self.fs.EDstack.cell_length,
+            )
+            self.fs.voltage_avg = Expression(expr=self.fs.EDstack.voltage_applied[0])
+            self.fs.voltage_per_cp = Expression(
+                expr=self.fs.EDstack.voltage_applied[0] / self.fs.EDstack.cell_pair_num
+            )
+        elif (
+            self.fs.EDstack.config.operation_mode
+            == ElectricalOperationMode.Constant_Current
+        ):
+            print("Constant_Current mode selected.")
+
+            self.fs.current_density_avg = Expression(
+                expr=self.fs.EDstack.current_applied[0]
+                / (self.fs.EDstack.cell_width * self.fs.EDstack.cell_length)
+            )
+            self.fs.voltage_avg = Expression(
+                expr=self.fs.EDstack.diluate.power_electrical_x[0, 1]
+                / (self.fs.EDstack.current_applied[0])
+            )
+            self.fs.voltage_per_cp = Expression(
+                expr=self.fs.voltage_avg / self.fs.EDstack.cell_pair_num
+            )
+
         # Stack voltages
         self.fs.experimental_voltage = Var(
             initialize=100,
@@ -242,9 +281,9 @@ class OneStageSinglePassData(ProcessBlockData):
             units=pyunits.volt,
             doc="Stack open circuit voltage",
         )
+
         self.fs.eq_experimental_voltage = Constraint(
-            expr=self.fs.experimental_voltage
-            == self.fs.ocv + self.fs.EDstack.voltage_applied[0]
+            expr=self.fs.experimental_voltage == self.fs.ocv + self.fs.voltage_avg
         )
 
         # NaCl-equivalent salinity calculations (cation-based weighting)
@@ -275,17 +314,6 @@ class OneStageSinglePassData(ProcessBlockData):
             expr=self.fs.EDstack.cell_width
             * self.fs.EDstack.cell_length
             * self.fs.EDstack.cell_pair_num
-        )
-        self.fs.voltage_per_cp = Expression(
-            expr=self.fs.EDstack.voltage_applied[0] / self.fs.EDstack.cell_pair_num
-        )
-        self.fs.current_density_avg = Expression(
-            expr=self.fs.EDstack.diluate.power_electrical_x[0, 1]
-            / (
-                self.fs.EDstack.voltage_applied[0]
-                * self.fs.EDstack.cell_width
-                * self.fs.EDstack.cell_length
-            )
         )
 
     def _wire_arcs(self):
@@ -347,7 +375,7 @@ class OneStageSinglePassData(ProcessBlockData):
                 ),
             )
             iscale.calculate_scaling_factors(self.fs)
-            #check_badly_scaled_vars(self.fs, small=1e-2, large=1e2)
+            # check_badly_scaled_vars(self.fs, small=1e-2, large=1e2)
             res = self.solve(self.fs, solver=solver, tee=tee)
             if str(res.solver.termination_condition) != "optimal":
                 _log.warning(
@@ -462,7 +490,9 @@ class OneStageSinglePassData(ProcessBlockData):
     ):
         for ion, t_num in t_cation_cem_dict.items():
             self.fs.EDstack.ion_trans_number_membrane["cem", ion, :].fix(t_num)
-            _log.info(f"Fixed cation transport number in CEM for ion '{ion}' to {t_num}.")
+            _log.info(
+                f"Fixed cation transport number in CEM for ion '{ion}' to {t_num}."
+            )
 
     def update_var_values(self, updates: dict | BaseModel) -> None:
         """
@@ -480,9 +510,9 @@ class OneStageSinglePassData(ProcessBlockData):
         elif isinstance(updates, BaseModel):
             # works for both v1 (.dict()) and v2 (.model_dump())
             if hasattr(updates, "model_dump"):
-                update_dict = updates.model_dump(exclude_unset=True)
+                update_dict = updates.model_dump(exclude_unset=True, exclude_none=True)
             else:
-                update_dict = updates.dict()
+                update_dict = updates.dict(exclude_none=True)
         else:
             raise TypeError(f"Expected dict or BaseModel, got {type(updates).__name__}")
 
@@ -576,8 +606,10 @@ class OneStageSinglePassData(ProcessBlockData):
                 value(self.fs.EDstack.cell_length),
                 value(self.fs.EDstack.cell_width),
                 value(self.fs.experimental_voltage),
-                value(self.fs.EDstack.voltage_applied[0]),
+                value(self.fs.voltage_avg),
                 value(self.fs.voltage_per_cp),
+                value(self.fs.EDstack.current_applied[0]),
+                value(self.fs.EDstack.current_utilization),
             ],
             columns=["value"],
             index=[
@@ -590,6 +622,8 @@ class OneStageSinglePassData(ProcessBlockData):
                 "Experimental voltage, V",
                 "Cell voltage, V",
                 "Cell-pair voltage, V",
+                "Stack current, A",
+                "Current Utilization",
             ],
         )
         print(pm_table)
@@ -646,6 +680,56 @@ class OneStageSinglePassData(ProcessBlockData):
         )
         pd.set_option("display.max_columns", None)
         print(pt_table)
+
+    def plot_lengthwise_profile(
+        self, var_name: str, *non_length_index_set, precision: float = None
+    ):
+        var = self.search_var_by_name(self.fs.EDstack, var_name)
+        if var is None:
+            raise KeyError(f"Variable '{var_name}' not found in ED stack.")
+        if not (
+            self.fs.EDstack.diluate.length_domain in var.index_set().set_tuple
+            and var.is_indexed()
+        ):
+            # print(var.index_set())
+            raise TypeError(f"Variable '{var_name}' is not indexed over length domain.")
+        ## plotting by plotly
+        x_vals = [value(x) for x in self.fs.EDstack.diluate.length_domain]
+        y_vals = [value(var[0, x]) for x in self.fs.EDstack.diluate.length_domain]
+        if precision is not None:
+            y_vals = [round(y, precision) for y in y_vals]
+
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=x_vals, y=y_vals, mode="lines", name=var_name))
+        fig.update_layout(
+            xaxis_title="Length Domain (x/L)",
+            yaxis_title=var_name,
+            xaxis=dict(
+                showline=True,
+                linewidth=2,
+                linecolor="black",
+                mirror=True,
+                ticks="outside",
+                title_font=dict(size=16),
+                tickfont=dict(size=14),
+                range=[0, 1],
+            ),
+            yaxis=dict(
+                showline=True,
+                linewidth=2,
+                linecolor="black",
+                mirror=True,
+                ticks="outside",
+                title_font=dict(size=16),
+                tickfont=dict(size=14),
+            ),
+            width=700,
+            height=500,
+            paper_bgcolor="white",
+            plot_bgcolor="white",
+        )
+        fig.show()
+        return fig
 
 
 OneStageSinglePass.from_yaml = OneStageSinglePassData.from_yaml

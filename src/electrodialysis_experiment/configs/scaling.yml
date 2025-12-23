@@ -26,8 +26,8 @@ scaling:
       factor: 1
     - target: fs.EDstack.cell_pair_num
       factor: 0.01
-    - target: fs.EDstack.voltage_applied
-      factor: 0.1
+    # - target: fs.EDstack.voltage_applied
+    #   factor: 0.1
     - target: fs.EDstack.diluate.power_electrical_x
       factor: 1
     - target: fs.pump0.control_volume.work

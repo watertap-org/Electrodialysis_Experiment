@@ -24,7 +24,8 @@ class FluidCondition(BaseModel):
 
 
 class UpdateParam(BaseModel):
-    experimental_voltage: float
+    experimental_voltage: Optional[float] = None
+    current_applied: Optional[Dict[float, float]] = None
     membrane_thickness: Dict[str, float]
     membrane_areal_resistance_const: Dict[str, float]
     membrane_areal_resistance_coef: Dict[str, float]
@@ -46,6 +47,7 @@ COLUMN_MAPPING = {
     "feed_Ca": "CfCa",
     "feed_Mg": "CfMg",
     "voltage": "Volt",
+    "current": "Curr",
     "r_cem": "r_cem",
     "k_cem": "k_cem",
     "r_aem": "r_aem",
@@ -59,6 +61,7 @@ TargetVariableMapping = {
     "fs.prod.properties[0].conc_mol_phase_comp['Liq','Ca_2+']": "CpCa",
     "fs.prod.properties[0].conc_mol_phase_comp['Liq','Mg_2+']": "CpMg",
     "fs.current_density_avg": "CurrD",
+    "fs.voltage_avg": "Volt",
 }
 
 # -------------------
@@ -101,12 +104,35 @@ def prepare_fluid_cond_dt_compatible_to_calculate_state(
     return fluid_cond_compatible
 
 
-def prepare_upd_param_dt(df: pd.DataFrame) -> List[UpdateParam]:
+def prepare_upd_param_dt_cv(df: pd.DataFrame) -> List[UpdateParam]:
     param_list = []
     for _, r in df.iterrows():
         param_list.append(
             UpdateParam(
                 experimental_voltage=r[COLUMN_MAPPING["voltage"]],
+                membrane_thickness={
+                    "cem": r[COLUMN_MAPPING["Dcem"]],
+                    "aem": r[COLUMN_MAPPING["Daem"]],
+                },
+                membrane_areal_resistance_const={
+                    "cem": r[COLUMN_MAPPING["r_cem"]],
+                    "aem": r[COLUMN_MAPPING["r_aem"]],
+                },
+                membrane_areal_resistance_coef={
+                    "cem": r[COLUMN_MAPPING["k_cem"]],
+                    "aem": r[COLUMN_MAPPING["k_aem"]],
+                },
+            )
+        )
+    return param_list
+
+
+def prepare_upd_param_dt_cc(df: pd.DataFrame) -> List[UpdateParam]:
+    param_list = []
+    for _, r in df.iterrows():
+        param_list.append(
+            UpdateParam(
+                current_applied={0: r[COLUMN_MAPPING["current"]]},
                 membrane_thickness={
                     "cem": r[COLUMN_MAPPING["Dcem"]],
                     "aem": r[COLUMN_MAPPING["Daem"]],
