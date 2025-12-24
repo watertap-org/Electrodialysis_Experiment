@@ -1,7 +1,7 @@
 solver:
   ipopt:
     tol: 1e-8
-    max_iter: 500
+    max_iter: 1000
     linear_solver: ma27
     bound_push: 1e-5
     mu_strategy: monotone
