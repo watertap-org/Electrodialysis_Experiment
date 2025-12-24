@@ -10,6 +10,12 @@
 #   variables:
 #     - scalarVar: fs.feed.properties[0].pressure
 #       value: 101325
+#       mode: fix
+#     - scalarVar: fs.EDstack.cell_pair_num
+#       value: 10
+#       mode: set
+#       lb: 1
+#       ub: 100
 #
 #     - indexedVar: fs.EDstack.membrane_thickness
 #       items:
@@ -184,6 +190,20 @@ def _unfix_var(var):
         raise TypeError(f"Cannot unfix {getattr(var, 'name', var)}: {e}")
 
 
+def _set_lb(var, lb):
+    try:
+        var.setlb(lb)
+    except Exception as e:
+        raise TypeError(f"Cannot set lower bound on {getattr(var, 'name', var)}: {e}")
+
+
+def _set_ub(var, ub):
+    try:
+        var.setub(ub)
+    except Exception as e:
+        raise TypeError(f"Cannot set upper bound on {getattr(var, 'name', var)}: {e}")
+
+
 def _normalize_index(idx: Union[str, int, float, List[Union[str, int, float]]]):
     if isinstance(idx, list):
         return tuple(idx)
@@ -197,6 +217,10 @@ def _apply_scalar_assignment(m, assign: VarAssignment):
         _fix_var(var, assign.value)
     elif mode == "set":
         _set_var(var, assign.value)
+        if assign.lb is not None:
+            _set_lb(var, assign.lb)
+        if assign.ub is not None:
+            _set_ub(var, assign.ub)
     elif mode == "unfix":
         _unfix_var(var)
     else:
@@ -217,6 +241,10 @@ def _apply_indexed_assignment(m, assign: VarAssignment):
                 _fix_var(elem, assign.value)
             elif mode == "set":
                 _set_var(elem, assign.value)
+                if assign.lb is not None:
+                    _set_lb(elem, assign.lb)
+                if assign.ub is not None:
+                    _set_ub(elem, assign.ub)
             elif mode == "unfix":
                 _unfix_var(elem)
             else:
@@ -236,6 +264,10 @@ def _apply_indexed_assignment(m, assign: VarAssignment):
                 _fix_var(element, it.value)
             elif mode == "set":
                 _set_var(element, it.value)
+                if assign.lb is not None:
+                    _set_lb(element, assign.lb)
+                if assign.ub is not None:
+                    _set_ub(element, assign.ub)
             elif mode == "unfix":
                 _unfix_var(element)
             else:

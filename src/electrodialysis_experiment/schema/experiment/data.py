@@ -38,7 +38,7 @@ class TargetVariable(BaseModel):
 
 
 # -------------------
-# Mapping Config (Optional)
+# Mapping Config 
 # -------------------
 
 COLUMN_MAPPING = {
@@ -149,6 +149,32 @@ def prepare_upd_param_dt_cc(df: pd.DataFrame) -> List[UpdateParam]:
         )
     return param_list
 
+def prepare_upd_param_dt_cc_sv(df: pd.DataFrame) -> List[UpdateParam]:
+    """
+    Constant Current mode with a steady voltage recorded.
+    """
+    param_list = []
+    for _, r in df.iterrows():
+        param_list.append(
+            UpdateParam(
+                current_applied={0: r[COLUMN_MAPPING["current"]]},
+                experimental_voltage=r[COLUMN_MAPPING["voltage"]],
+                membrane_thickness={
+                    "cem": r[COLUMN_MAPPING["Dcem"]],
+                    "aem": r[COLUMN_MAPPING["Daem"]],
+                },
+                membrane_areal_resistance_const={
+                    "cem": r[COLUMN_MAPPING["r_cem"]],
+                    "aem": r[COLUMN_MAPPING["r_aem"]],
+                },
+                membrane_areal_resistance_coef={
+                    "cem": r[COLUMN_MAPPING["k_cem"]],
+                    "aem": r[COLUMN_MAPPING["k_aem"]],
+                },
+            )
+        )
+    return param_list
+
 
 def prepare_target_variable_dt(
     df: pd.DataFrame,
@@ -166,19 +192,6 @@ def prepare_target_variable_dt(
     target_df = pd.DataFrame(structured_rows)
     return target_var_list, target_df
 
-
-# def prepare_target_variable_dt(df: pd.DataFrame) -> List[TargetVariable]:
-#     target_var_list = []
-#     for _, r in df.iterrows():
-#         for name, col in TargetVariableMapping.items():
-#             target_var_list.append(
-#                 TargetVariable(
-#                     name=name,
-#                     value=r[col],
-#                     weight=1.0  # Default weight, can be adjusted as needed
-#                 )
-#             )
-#     return target_var_list
 
 
 def prepare_cation_cem_transport_number_estimate(
@@ -238,7 +251,7 @@ def load_parquet_and_prepare(path: str):
 
 
 def testing_fun():
-    data = pd.read_parquet("dt/dt_x_y_1.parquet")
+    data = pd.read_parquet("src/electrodialysis_experiment/data/raw/dt_SEDv4_021125.parquet")
     display(data)
     df = data.iloc[[0, 1, 12]]
     display(df)
@@ -258,11 +271,4 @@ def testing_fun():
 
 if __name__ == "__main__":
     testing_fun()
-    # target_var_list, target_df= prepare_target_variable_dt(pd.read_parquet("dt/dt_x_y_1.parquet"))
-    # print("Target Variables:")
-    # print(target_var_list)
-    # print(target_df)
-
-    # for var in target_var_list:
-    #     print(var)
-    #     print(var.name)
+    

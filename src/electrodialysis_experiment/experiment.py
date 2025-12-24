@@ -457,9 +457,9 @@ class MasterExperimentBuilder:
                     self.model.sample_blk[i].proc.fs.EDstack.ion_trans_number_membrane[
                         "cem", ion, :
                     ].unfix()
-                    _log.info(
-                        f"Unfixed cation transport number in CEM for ion '{ion}' in block {i}."
-                    )
+                    # _log.info(
+                    #     f"Unfixed cation transport number in CEM for ion '{ion}' in block {i}."
+                    # )
 
     def add_cation_transport_number_sum_constraint(self):
         # Add constraint: sum of ion transport numbers for cations at each x in length_domain equals 1

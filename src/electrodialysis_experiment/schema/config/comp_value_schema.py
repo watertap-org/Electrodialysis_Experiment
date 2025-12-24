@@ -40,6 +40,8 @@ class VarAssignment(BaseModel):
     #  - set: var.set_value(value) (for mutable/unfixed Params/Vars)
     #  - unfix: var.unfix()
     mode: str = Field(default="fix")
+    lb: Optional[Number] = None
+    ub: Optional[Number] = None
 
 
 class VarValueConfig(BaseModel):

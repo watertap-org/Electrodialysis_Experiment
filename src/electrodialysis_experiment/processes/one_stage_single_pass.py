@@ -231,7 +231,7 @@ class OneStageSinglePassData(ProcessBlockData):
             self.fs.EDstack.config.operation_mode
             == ElectricalOperationMode.Constant_Voltage
         ):
-            print("Constant_Voltage mode selected.")
+            print(f"Constant_Voltage mode selected for {self.name}.")
             self.fs.current_density_avg = Expression(
                 expr=self.fs.EDstack.diluate.power_electrical_x[0, 1]
                 / (
@@ -254,7 +254,7 @@ class OneStageSinglePassData(ProcessBlockData):
             self.fs.EDstack.config.operation_mode
             == ElectricalOperationMode.Constant_Current
         ):
-            print("Constant_Current mode selected.")
+            print(f"Constant_Current mode selected for {self.name}.")
 
             self.fs.current_density_avg = Expression(
                 expr=self.fs.EDstack.current_applied[0]

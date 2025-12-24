@@ -26,6 +26,9 @@ InitialValue:
       value: 0.3
     - scalarVar: fs.ocv
       value: 4.35
+      mode: set
+      lb: 0
+      ub: 10
     - scalarVar: fs.EDstack.pressure_drop
       value: 150000
     - scalarVar: fs.EDstack.cell_pair_num
@@ -46,6 +49,9 @@ InitialValue:
       value: 0
     - scalarVar: fs.EDstack.current_utilization
       value: 1
+      mode: set
+      lb: 0.5
+      ub: 1.0
     - scalarVar: fs.EDstack.diffus_mass
       value: 1.6e-9
 

@@ -619,7 +619,7 @@ class ED1DData(InitializationMixin, UnitModelBlockData):
         )
         self.slack_resistance = Var(
             initialize=0,
-            bounds=(0, 20),
+            bounds=(0, 100),
             domain=NonNegativeReals,
             units=pyunits.ohm,
             doc="slack resistance to account for unidentified resistance",
