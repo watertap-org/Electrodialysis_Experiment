@@ -14,7 +14,10 @@ from pyomo.dae import DerivativeVar
 import os
 import ast
 import idaes.logger as log
-from electrodialysis_experiment.schema.experiment.data import FluidCondition, UpdateParam
+from electrodialysis_experiment.schema.experiment.data import (
+    FluidCondition,
+    UpdateParam,
+)
 from electrodialysis_experiment.surrogates.transport_number_membrane.cation_cem_simulator import (
     CationCemTransportNumberSimulator,
     SurrogateType,
@@ -72,7 +75,7 @@ class MasterExperimentBuilder:
         scaling_cfg_path: str | Path = None,
         process_init_cfg_path: str | Path = None,
         fluid_condition: List[FluidCondition] = None,
-        exp_setup_param: List[UpdateParam]= None,
+        exp_setup_param: List[UpdateParam] = None,
         t_est: List[Dict] = None,
         solver=None,
         tee: bool = True,
@@ -157,12 +160,14 @@ class MasterExperimentBuilder:
             name, _, idx_str = match.groups()
             obj = getattr(obj, name)
             if idx_str:
-                idx = eval(idx_str)
+                idx = self._parse_index(idx_str)
                 obj = obj[idx]
         return obj
 
-    def _collect_vars(self):
-        for var in self.model.component_data_objects(
+    def _collect_vars(self, model: pyo.ConcreteModel = None):
+        if model is None:
+            model = self.model
+        for var in model.component_data_objects(
             (pyo.Var, DerivativeVar), descend_into=True
         ):
             comp = var.parent_component()
@@ -182,8 +187,10 @@ class MasterExperimentBuilder:
                 "scaled_value": scaled_value,
             }
 
-    def _collect_params(self):
-        for param in self.model.component_data_objects(pyo.Param, descend_into=True):
+    def _collect_params(self, model: pyo.ConcreteModel = None):
+        if model is None:
+            model = self.model
+        for param in model.component_data_objects(pyo.Param, descend_into=True):
             if not hasattr(param, "parent_component"):
                 continue
             comp = param.parent_component()
@@ -196,8 +203,10 @@ class MasterExperimentBuilder:
                 "value": self._safe_float(param.value),
             }
 
-    def _collect_constraints(self):
-        for con in self.model.component_data_objects(pyo.Constraint, descend_into=True):
+    def _collect_constraints(self, model: pyo.ConcreteModel = None):
+        if model is None:
+            model = self.model
+        for con in model.component_data_objects(pyo.Constraint, descend_into=True):
             comp = con.parent_component()
             comp_path = comp.getname(fully_qualified=True)
             index = con.index()
@@ -256,10 +265,10 @@ class MasterExperimentBuilder:
                 "scaled_residue": scaled_residue,
             }
 
-    def _collect_expressions(self):
-        for expr in self.model.component_data_objects(
-            pyo.Expression, descend_into=True
-        ):
+    def _collect_expressions(self, model: pyo.ConcreteModel = None):
+        if model is None:
+            model = self.model
+        for expr in model.component_data_objects(pyo.Expression, descend_into=True):
             comp = expr.parent_component()
             comp_path = comp.getname(fully_qualified=True)
             index = expr.index()
@@ -271,11 +280,11 @@ class MasterExperimentBuilder:
                 "scaling": self._safe_float(scaling) if scaling is not None else None,
             }
 
-    def save_model_hdf(self, filename):
-        var_df = pd.DataFrame(self._collect_vars())
-        param_df = pd.DataFrame(self._collect_params())
-        con_df = pd.DataFrame(self._collect_constraints())
-        expr_df = pd.DataFrame(self._collect_expressions())
+    def save_model_hdf(self, filename, model: pyo.ConcreteModel = None):
+        var_df = pd.DataFrame(self._collect_vars(model=model))
+        param_df = pd.DataFrame(self._collect_params(model=model))
+        con_df = pd.DataFrame(self._collect_constraints(model=model))
+        expr_df = pd.DataFrame(self._collect_expressions(model=model))
         with pd.HDFStore(filename, mode="w") as store:
             store.put("variables", var_df)
             store.put("parameters", param_df)
@@ -312,9 +321,9 @@ class MasterExperimentBuilder:
             path, index, value = row["component"], row["index"], row["value"]
             try:
                 comp = self._resolve_path_from(path, model)
-                idx = eval(index) if index != "None" else None
+                idx = self._parse_index(index)
                 if not math.isnan(value):
-                    (comp[idx] if idx else comp).set_value(value)
+                    (comp[idx] if idx is not None else comp).set_value(value)
             except Exception as e:
                 _log.warning(f"Couldn't restore parameter '{path}[{index}]': {e}")
 
@@ -348,8 +357,10 @@ class MasterExperimentBuilder:
                 if scaling is None or math.isnan(scaling):
                     continue
                 comp = self._resolve_path_from(path, model)
-                idx = eval(index) if index != "None" else None
-                iscale.set_scaling_factor(comp[idx] if idx else comp, scaling)
+                idx = self._parse_index(index)
+                iscale.set_scaling_factor(
+                    comp[idx] if idx is not None else comp, scaling
+                )
             except Exception as e:
                 _log.warning(
                     f"Couldn't restore constraint scaling '{path}[{index}]': {e}"
@@ -365,8 +376,10 @@ class MasterExperimentBuilder:
                 if scaling is None or math.isnan(scaling):
                     continue
                 comp = self._resolve_path_from(path, model)
-                idx = eval(index) if index != "None" else None
-                iscale.set_scaling_factor(comp[idx] if idx else comp, scaling)
+                idx = self._parse_index(index)
+                iscale.set_scaling_factor(
+                    comp[idx] if idx is not None else comp, scaling
+                )
             except Exception as e:
                 _log.warning(
                     f"Couldn't restore expression scaling '{path}[{index}]': {e}"
@@ -390,6 +403,7 @@ class MasterExperimentBuilder:
 
     def add_sse_objective_of_selected_variables(
         self,
+        model: pyo.ConcreteModel = None,
         variables_weights: Union[List[str], Dict[str, float]] = None,
         name: str = "sse_objective",
         data: pd.DataFrame = None,
@@ -398,10 +412,13 @@ class MasterExperimentBuilder:
         Add a sum of squared errors (SSE) objective for selected variables.
 
         Args:
+            model (pyo.ConcreteModel): The Pyomo model to which the objective will be added. Defaults to self.model.
             variables_with_weights (List[str] or Dict[str, float]): Variable names or (variable → weight) mapping.
             name (str): Name of the objective.
             data (pd.DataFrame): Data containing target values.
         """
+        if model is None:
+            model = self.model
         if variables_weights is None:
             _log.warning("Skipping objective creation: no variables provided.")
             return
@@ -415,31 +432,34 @@ class MasterExperimentBuilder:
             # variables = list(weights.keys())
         else:
             raise ValueError("Data must be provided to calculate SSE.")
+        active_ids = {i for i in model.sample_blk if model.sample_blk[i].active}
         assert len(data) == len(
-            self.model.sample_set
-        ), f"Number of data points ({len(data)}) does not match number of samples ({len(self.model.sample_set)})."
+            active_ids
+        ), f"Number of data points ({len(data)}) does not match number of ACTIVE samples ({len(active_ids)})."
+        assert active_ids == set(
+            data.index
+        ), f"Data indices {data.index.tolist()} do not match ACTIVE sample data indices {sorted(active_ids)}."
 
         if isinstance(variables_weights, list):
             weights = {var: 1.0 for var in variables_weights}
         else:
             weights = variables_weights
-        if hasattr(self.model, "sse_objective"):
-            del self.model.sse_objective
+        if hasattr(model, "sse_objective"):
+            model.del_component(model.sse_objective)
+            _log.info("Replacing existing SSE objective.")
         # Create the SSE objective
         expr = sum(
             weights[var]
             * (
-                self._resolve_path_from(var, self.model.sample_blk[i].proc)
-                - data[var].iloc[i]
+                self._resolve_path_from(var, model.sample_blk[i].proc)
+                - data[var].loc[i]
             )
             ** 2
-            for i in range(len(data))
+            for i in active_ids
             for var in weights
         )
 
-        self.model.sse_objective = pyo.Objective(
-            expr=expr, sense=pyo.minimize, doc=name
-        )
+        model.sse_objective = pyo.Objective(expr=expr, sense=pyo.minimize, doc=name)
 
     def free_cation_transport_numbers_in_cem(self):
         """
@@ -493,6 +513,94 @@ class MasterExperimentBuilder:
                     first_sample.proc.fs.ocv == m.sample_blk[sample_idx].proc.fs.ocv
                 )
         _log.info("Added OCV equality constraints across all samples.")
+
+    def add_log_linear_surr_coef_constraint_grouped(
+        self, group_list, require_full_coverage=True
+    ):
+        """
+        Enforce equality of conc_ratio_coef within user-defined simulator groups.
+
+        Each group shares one set of coefficients; different groups are independent.
+        Singleton groups are allowed and impose no constraints.
+
+        Parameters
+        ----------
+        group_list : List[List[sim_idx]]
+            Explicit grouping of simulator indices.
+            - Any number of groups supported
+            - Groups must be non-empty
+            - No simulator may appear in more than one group
+
+        require_full_coverage : bool, default=True
+            If True, every simulator must appear in exactly one group.
+            If False, simulators not listed remain unconstrained.
+        """
+        m = self.model
+        if not hasattr(m, "cation_cem_transport_number_simulator"):
+            raise ValueError(
+                "Model is missing cation_cem_transport_number_simulator attribute."
+            )
+
+        sim_comp = m.cation_cem_transport_number_simulator
+        if not hasattr(sim_comp, "_index_set"):
+            _log.warning(
+                "cation_cem_transport_number_simulator is not indexed. "
+                "No coefficient equality constraints added."
+            )
+            return
+
+        all_sims = list(sim_comp.index_set())
+
+        if not group_list or any(len(g) == 0 for g in group_list):
+            raise ValueError("group_list must be a non-empty list of non-empty groups.")
+
+        flat = [s for g in group_list for s in g]
+
+        # Validate simulator existence
+        missing = [s for s in flat if s not in sim_comp]
+        if missing:
+            raise ValueError(
+                f"These simulator indices are not present in the model: {missing}"
+            )
+
+        # Validate no overlaps
+        seen = set()
+        overlaps = set()
+        for s in flat:
+            if s in seen:
+                overlaps.add(s)
+            seen.add(s)
+        if overlaps:
+            raise ValueError(
+                f"Simulator indices appear in multiple groups: {sorted(overlaps)}"
+            )
+
+        # Validate full coverage if required
+        if require_full_coverage:
+            not_grouped = [s for s in all_sims if s not in seen]
+            if not_grouped:
+                raise ValueError(
+                    f"These simulator indices are not included in any group: {not_grouped}"
+                )
+
+        # Reference coefficient index set
+        ref_sim = group_list[0][0]
+        coef_indices = sim_comp[ref_sim].conc_ratio_coef.index_set()
+
+        m.conc_ratio_coef_group_equality_cons = pyo.ConstraintList()
+
+        # Build equality constraints within each group
+        for group in group_list:
+            if len(group) == 1:
+                continue  # singleton => unconstrained
+
+            g0 = group[0]
+            for coef_idx in coef_indices:
+                ref_var = sim_comp[g0].conc_ratio_coef[coef_idx]
+                for g in group[1:]:
+                    m.conc_ratio_coef_group_equality_cons.add(
+                        sim_comp[g].conc_ratio_coef[coef_idx] == ref_var
+                    )
 
     def add_log_linear_surr_coef_constraint(self):
         m = self.model

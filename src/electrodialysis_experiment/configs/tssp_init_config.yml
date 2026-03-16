@@ -1,0 +1,232 @@
+InitialValue:
+  variables:
+    # --- feed and product ---
+    - scalarVar: fs.feed.properties[0].pressure
+      value: 101325
+    - scalarVar: fs.feed.properties[0].temperature
+      value: 298.15
+
+    - scalarVar: fs.prod.properties[0].pressure
+      value: 101325
+    - scalarVar: fs.disp.properties[0].pressure
+      value: 101325
+
+    # --- pumps ---
+    - scalarVar: fs.pump0.efficiency_pump[0]
+      value: 0.8
+    - scalarVar: fs.pump1.efficiency_pump[0]
+      value: 0.8
+
+    # --- ED stage 1 ---
+    - scalarVar: fs.EDstack[1].unit.experimental_voltage
+      value: 10
+    - scalarVar: fs.EDstack[1].unit.ocv
+      value: 2
+      mode: fix
+      lb: 0
+      ub: 50
+    - scalarVar: fs.EDstack[1].unit.pressure_drop[0]
+      value: 150000
+    - scalarVar: fs.EDstack[1].unit.cell_pair_num
+      value: 10
+    - scalarVar: fs.EDstack[1].unit.channel_height
+      value: 7.6e-4
+    - scalarVar: fs.EDstack[1].unit.cell_width
+      value: 0.047
+    - scalarVar: fs.EDstack[1].unit.cell_length
+      value: 0.47
+    - scalarVar: fs.EDstack[1].unit.spacer_porosity
+      value: 0.83
+    - scalarVar: fs.EDstack[1].unit.spacer_conductivity_coefficient
+      value: 0.83
+    - scalarVar: fs.EDstack[1].unit.electrodes_resistance
+      value: 0
+    - scalarVar: fs.EDstack[1].unit.slack_resistance
+      value: 0
+    - scalarVar: fs.EDstack[1].unit.current_utilization
+      value: 1
+      mode: set
+      lb: 0.5
+      ub: 1.0
+    - scalarVar: fs.EDstack[1].unit.diffus_mass
+      value: 1.6e-9
+
+    - indexedVar: fs.EDstack[1].unit.water_trans_number_membrane
+      items:
+        - index: ["cem"]
+          value: 5.8
+        - index: ["aem"]
+          value: 4.3
+
+    - indexedVar: fs.EDstack[1].unit.water_permeability_membrane
+      items:
+        - index: ["cem"]
+          value: 2.16e-14
+        - index: ["aem"]
+          value: 1.75e-14
+
+    - indexedVar: fs.EDstack[1].unit.membrane_areal_resistance_const
+      items:
+        - index: ["cem"]
+          value: 1.0e-3
+        - index: ["aem"]
+          value: 2.2e-3
+
+    - indexedVar: fs.EDstack[1].unit.membrane_areal_resistance_coef
+      items:
+        - index: ["cem"]
+          value: 0.03
+        - index: ["aem"]
+          value: 0.03
+
+    - indexedVar: fs.EDstack[1].unit.membrane_thickness
+      items:
+        - index: ["aem"]
+          value: 6.35e-4
+        - index: ["cem"]
+          value: 5.7e-4
+
+    - indexedVar: fs.EDstack[1].unit.ion_trans_number_membrane
+      items:
+        - index: ["cem", "Na_+"]
+          value: 0.916
+        - index: ["aem", "Na_+"]
+          value: 0
+        - index: ["cem", "Ca_2+"]
+          value: 0.024
+        - index: ["aem", "Ca_2+"]
+          value: 0
+        - index: ["cem", "Mg_2+"]
+          value: 0.059
+        - index: ["aem", "Mg_2+"]
+          value: 0
+        - index: ["cem", "Cl_-"]
+          value: 0
+        - index: ["aem", "Cl_-"]
+          value: 1
+
+    - indexedVar: fs.EDstack[1].unit.solute_diffusivity_membrane
+      items:
+        - index: ["cem", "Na_+"]
+          value: 3.28e-11
+        - index: ["aem", "Na_+"]
+          value: 3.28e-11
+        - index: ["cem", "Ca_2+"]
+          value: 3.28e-11
+        - index: ["aem", "Ca_2+"]
+          value: 3.28e-11
+        - index: ["cem", "Mg_2+"]
+          value: 3.28e-11
+        - index: ["aem", "Mg_2+"]
+          value: 3.28e-11
+        - index: ["cem", "Cl_-"]
+          value: 3.28e-11
+        - index: ["aem", "Cl_-"]
+          value: 3.28e-11
+
+    # --- ED stage 2 ---
+    - scalarVar: fs.EDstack[2].unit.experimental_voltage
+      value: 10
+    - scalarVar: fs.EDstack[2].unit.ocv
+      value: 1
+      mode: fix
+      lb: 0
+      ub: 50
+    - scalarVar: fs.EDstack[2].unit.pressure_drop[0]
+      value: 150000
+    - scalarVar: fs.EDstack[2].unit.cell_pair_num
+      value: 10
+    - scalarVar: fs.EDstack[2].unit.channel_height
+      value: 7.6e-4
+    - scalarVar: fs.EDstack[2].unit.cell_width
+      value: 0.047
+    - scalarVar: fs.EDstack[2].unit.cell_length
+      value: 0.47
+    - scalarVar: fs.EDstack[2].unit.spacer_porosity
+      value: 0.83
+    - scalarVar: fs.EDstack[2].unit.spacer_conductivity_coefficient
+      value: 0.83
+    - scalarVar: fs.EDstack[2].unit.electrodes_resistance
+      value: 0
+    - scalarVar: fs.EDstack[2].unit.slack_resistance
+      value: 0
+    - scalarVar: fs.EDstack[2].unit.current_utilization
+      value: 1
+      mode: set
+      lb: 0.5
+      ub: 1.0
+    - scalarVar: fs.EDstack[2].unit.diffus_mass
+      value: 1.6e-9
+
+    - indexedVar: fs.EDstack[2].unit.water_trans_number_membrane
+      items:
+        - index: ["cem"]
+          value: 5.8
+        - index: ["aem"]
+          value: 4.3
+
+    - indexedVar: fs.EDstack[2].unit.water_permeability_membrane
+      items:
+        - index: ["cem"]
+          value: 2.16e-14
+        - index: ["aem"]
+          value: 1.75e-14
+
+    - indexedVar: fs.EDstack[2].unit.membrane_areal_resistance_const
+      items:
+        - index: ["cem"]
+          value: 1.0e-3
+        - index: ["aem"]
+          value: 2.2e-3
+
+    - indexedVar: fs.EDstack[2].unit.membrane_areal_resistance_coef
+      items:
+        - index: ["cem"]
+          value: 0.03
+        - index: ["aem"]
+          value: 0.03
+
+    - indexedVar: fs.EDstack[2].unit.membrane_thickness
+      items:
+        - index: ["aem"]
+          value: 6.35e-4
+        - index: ["cem"]
+          value: 5.7e-4
+
+    - indexedVar: fs.EDstack[2].unit.ion_trans_number_membrane
+      items:
+        - index: ["cem", "Na_+"]
+          value: 0.916
+        - index: ["aem", "Na_+"]
+          value: 0
+        - index: ["cem", "Ca_2+"]
+          value: 0.024
+        - index: ["aem", "Ca_2+"]
+          value: 0
+        - index: ["cem", "Mg_2+"]
+          value: 0.059
+        - index: ["aem", "Mg_2+"]
+          value: 0
+        - index: ["cem", "Cl_-"]
+          value: 0
+        - index: ["aem", "Cl_-"]
+          value: 1
+
+    - indexedVar: fs.EDstack[2].unit.solute_diffusivity_membrane
+      items:
+        - index: ["cem", "Na_+"]
+          value: 3.28e-11
+        - index: ["aem", "Na_+"]
+          value: 3.28e-11
+        - index: ["cem", "Ca_2+"]
+          value: 3.28e-11
+        - index: ["aem", "Ca_2+"]
+          value: 3.28e-11
+        - index: ["cem", "Mg_2+"]
+          value: 3.28e-11
+        - index: ["aem", "Mg_2+"]
+          value: 3.28e-11
+        - index: ["cem", "Cl_-"]
+          value: 3.28e-11
+        - index: ["aem", "Cl_-"]
+          value: 3.28e-11

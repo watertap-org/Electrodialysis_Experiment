@@ -1,4 +1,13 @@
-from pydantic import BaseModel, ConfigDict, Field, field_validator, BeforeValidator
+import re
+
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+    BeforeValidator,
+)
 from typing import Dict, List, Optional, Tuple, Annotated, TypeVar
 from electrodialysis_experiment.processes.base import (
     ElectricalOperationMode,
@@ -43,12 +52,13 @@ class ProcessConfig(BaseModel):
 
 class IPOPTconfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
-    tol: float = 1e-8
-    max_iter: int = 3000
-    linear_solver: str = "ma27"
-    bound_push: float = 1e-5
-    mu_strategy: str = "monotone"
-    nlp_scaling_method: str = "user-scaling"
+    solver_name: str = "ipopt-watertap"
+    tol: Optional[float] = None
+    max_iter: Optional[int] = None
+    linear_solver: Optional[str] = None
+    bound_push: Optional[float] = None
+    mu_strategy: Optional[str] = None
+    nlp_scaling_method: Optional[str] = None
 
 
 class EDStackConfig(BaseModel):
@@ -145,3 +155,84 @@ class OneStageSinglePassConfig(BaseModel):
     ipopt: IPOPTconfig = Field(default_factory=IPOPTconfig)
     ion: IonConfig
     solution: SolutionConfig = Field(default_factory=SolutionConfig)
+
+class FourStageSinglePassConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    ed_stack_1: EDStackConfig = Field(default_factory=EDStackConfig)
+    ed_stack_2: EDStackConfig = Field(default_factory=EDStackConfig)
+    ed_stack_3: EDStackConfig = Field(default_factory=EDStackConfig)
+    ed_stack_4: EDStackConfig = Field(default_factory=EDStackConfig)
+    process: ProcessConfig = Field(default_factory=ProcessConfig)
+    ipopt: IPOPTconfig = Field(default_factory=IPOPTconfig)
+    ion: IonConfig
+    solution: SolutionConfig = Field(default_factory=SolutionConfig)
+
+
+class KStageSinglePassConfig(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    num_stages: int = Field(default=1, ge=1)
+    ed_stack: EDStackConfig = Field(default_factory=EDStackConfig)
+    ed_stacks: Dict[int, EDStackConfig] = Field(default_factory=dict)
+    process: ProcessConfig = Field(default_factory=ProcessConfig)
+    ipopt: IPOPTconfig = Field(default_factory=IPOPTconfig)
+    ion: IonConfig
+    solution: SolutionConfig = Field(default_factory=SolutionConfig)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _collect_legacy_stage_keys(cls, data):
+        if not isinstance(data, dict):
+            return data
+
+        stage_overrides = dict(data.get("ed_stacks") or {})
+        max_stage = None
+        legacy_keys = []
+        for key, val in data.items():
+            match = re.fullmatch(r"ed_stack_(\d+)", str(key))
+            if match:
+                idx = int(match.group(1))
+                stage_overrides[idx] = val
+                max_stage = idx if max_stage is None else max(max_stage, idx)
+                legacy_keys.append(key)
+
+        if stage_overrides:
+            data["ed_stacks"] = stage_overrides
+        for key in legacy_keys:
+            data.pop(key, None)
+        if max_stage is not None and "num_stages" not in data:
+            data["num_stages"] = max_stage
+        return data
+
+    @field_validator("ed_stacks", mode="before")
+    @classmethod
+    def _normalize_stage_keys(cls, value):
+        if value is None:
+            return {}
+        if not isinstance(value, dict):
+            return value
+
+        normalized = {}
+        for key, val in value.items():
+            if isinstance(key, int):
+                idx = key
+            elif isinstance(key, str) and key.isdigit():
+                idx = int(key)
+            else:
+                raise ValueError(
+                    f"Invalid stage key '{key}'. Expected integer stage indices."
+                )
+            normalized[idx] = val
+        return normalized
+
+    @model_validator(mode="after")
+    def _validate_stage_bounds(self):
+        for idx in self.ed_stacks:
+            if idx < 1:
+                raise ValueError(
+                    f"Invalid stage index {idx}. Stage indices must be >= 1."
+                )
+            if idx > self.num_stages:
+                raise ValueError(
+                    f"Stage index {idx} exceeds num_stages={self.num_stages}."
+                )
+        return self

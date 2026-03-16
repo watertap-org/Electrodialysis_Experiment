@@ -35,12 +35,16 @@ from typing import Any, List, Union
 import re
 import yaml
 from pydantic import ValidationError
+from pyomo.core.base.var import Var, _VarData
+from pyomo.environ import value
 
 from electrodialysis_experiment.schema.config.comp_value_schema import (
     VarAssignment,
     VarValueConfig,
 )
+import idaes.logger as idaeslogger
 
+_log = idaeslogger.getLogger(__name__)
 
 _INDEX_RE = re.compile(
     r"""
@@ -169,18 +173,16 @@ def resolve_path(m, path: str):
 def _fix_var(var, val):
     try:
         var.fix(val)
-    except Exception:
-        try:
-            var.set_value(val)
-        except Exception as e:
-            raise TypeError(f"Cannot fix/set value on {getattr(var, 'name', var)}: {e}")
+    except Exception as e:
+        raise TypeError(f"Cannot fix value on {getattr(var, 'name', var)}: {e}")
 
 
 def _set_var(var, val):
     try:
+
         var.set_value(val)
-    except Exception:
-        var.fix(val)
+    except Exception as e:
+        raise TypeError(f"Cannot set value on {getattr(var, 'name', var)}: {e}")
 
 
 def _unfix_var(var):
@@ -212,17 +214,34 @@ def _normalize_index(idx: Union[str, int, float, List[Union[str, int, float]]]):
 
 def _apply_scalar_assignment(m, assign: VarAssignment):
     var = resolve_path(m, assign.scalarVar)  # may already include [indices]
+    if not isinstance(var, (Var, _VarData)):
+        raise TypeError(f"Expected {var} type as Pyomo Var or VarData, got {type(var)}")
+    if var.is_indexed():
+        raise TypeError(
+            f"Resolved {assign.scalarVar} to an indexed component; expected scalar. Got {var} with indices {list(var._index_set)}"
+        )
     mode = assign.mode.lower()
     if mode == "fix":
         _fix_var(var, assign.value)
+        _log.info(
+            f"Fixed {assign.scalarVar} to {assign.value}; is_fixed={var.is_fixed()}"
+        )
     elif mode == "set":
+        print(var.is_fixed())
         _set_var(var, assign.value)
+        _log.info(
+            f"Set {assign.scalarVar} to {assign.value}; is_fixed={var.is_fixed()}"
+        )
+        print(var.is_fixed())
         if assign.lb is not None:
             _set_lb(var, assign.lb)
+            _log.info(f"Set lower bound of {assign.scalarVar} to {assign.lb}")
         if assign.ub is not None:
             _set_ub(var, assign.ub)
+            _log.info(f"Set upper bound of {assign.scalarVar} to {assign.ub}")
     elif mode == "unfix":
         _unfix_var(var)
+        _log.info(f"Unfixed {assign.scalarVar}; is_fixed={var.is_fixed()}")
     else:
         raise ValueError(
             f"Unknown mode '{assign.mode}' for scalarVar {assign.scalarVar}"
@@ -239,14 +258,29 @@ def _apply_indexed_assignment(m, assign: VarAssignment):
             elem = indexed[key]
             if mode == "fix":
                 _fix_var(elem, assign.value)
+                _log.info(
+                    f"Fixed {assign.indexedVar}[{key}] to {assign.value}; is_fixed={elem.is_fixed()}"
+                )
             elif mode == "set":
                 _set_var(elem, assign.value)
+                _log.info(
+                    f"Set {assign.indexedVar}[{key}] to {assign.value}; is_fixed={elem.is_fixed()}"
+                )
                 if assign.lb is not None:
                     _set_lb(elem, assign.lb)
+                    _log.info(
+                        f"Set lower bound of {assign.indexedVar}[{key}] to {assign.lb}"
+                    )
                 if assign.ub is not None:
                     _set_ub(elem, assign.ub)
+                    _log.info(
+                        f"Set upper bound of {assign.indexedVar}[{key}] to {assign.ub}"
+                    )
             elif mode == "unfix":
                 _unfix_var(elem)
+                _log.info(
+                    f"Unfixed {assign.indexedVar}[{key}]; is_fixed={elem.is_fixed()}"
+                )
             else:
                 raise ValueError(
                     f"Unknown mode '{assign.mode}' on indexedVar {assign.indexedVar}"

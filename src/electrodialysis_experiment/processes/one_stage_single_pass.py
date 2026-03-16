@@ -69,7 +69,6 @@ from electrodialysis_experiment.utils.user_scaling import check_badly_scaled_var
 
 _log = idaeslogger.getIdaesLogger(__name__)
 
-
 @declare_process_block_class("OneStageSinglePass")
 class OneStageSinglePassData(ProcessBlockData):
     """
@@ -357,12 +356,15 @@ class OneStageSinglePassData(ProcessBlockData):
         """
         # m = self.m
         iscale.calculate_scaling_factors(self.fs.feed)
+        init_solver, init_optarg, solve_solver = self._resolve_solver_settings(solver)
         initargs = fluid_condition.get_state_dict()
-        self.fs.feed.properties.calculate_state(initargs, hold_state=True)
+        self.fs.feed.properties.calculate_state(
+            initargs, hold_state=True, solver=init_solver, optarg=init_optarg
+        )
         dof = mstat.degrees_of_freedom(self.fs)
-        _log.info(f"The process is being intialized at DOF = {dof}.")
+        _log.info(f"The process is being initialized at DOF = {dof}.")
         try:
-            self._initialize_units()
+            self._initialize_units(solver=init_solver, optarg=init_optarg)
         except Exception as experr:
             _log.warning(f"Initialization failed at the unit level: {experr}")
 
@@ -376,7 +378,7 @@ class OneStageSinglePassData(ProcessBlockData):
             )
             iscale.calculate_scaling_factors(self.fs)
             # check_badly_scaled_vars(self.fs, small=1e-2, large=1e2)
-            res = self.solve(self.fs, solver=solver, tee=tee)
+            res = self.solve(self.fs, solver=solve_solver, tee=tee)
             if str(res.solver.termination_condition) != "optimal":
                 _log.warning(
                     f"Process {self.name} did not yield optimal solution when solved at the initial point. "
@@ -399,47 +401,75 @@ class OneStageSinglePassData(ProcessBlockData):
     ):
         if solver is None:
             _log.info(
-                "No solver specified; using IPOPT solver from Pyomo SolverFactory with all default options."
+                "No solver specified; using the default IPOPT solver from WaterTAP."
             )
-            solver = SolverFactory("ipopt")
+            solver = get_solver("ipopt-watertap")
+        elif isinstance(solver, str):
+            solver = SolverFactory(solver)
         results = solver.solve(model, tee=tee)
         _log.info(
             f"Solved model: {model.name}; solver termination condition: {results.solver.termination_condition}"
         )
         return results
 
-    def _initialize_units(self):
+    def _default_solver_and_optarg(self):
+        cfg = self.config.process_cfg.ipopt
+        optarg = {
+            "tol": cfg.tol,
+            "max_iter": cfg.max_iter,
+            "linear_solver": cfg.linear_solver,
+            "bound_push": cfg.bound_push,
+            "mu_strategy": cfg.mu_strategy,
+            "nlp_scaling_method": cfg.nlp_scaling_method,
+        }
+        optarg = {k: v for k, v in optarg.items() if v is not None}
+        return cfg.solver_name, (optarg if optarg else None)
+
+    def _resolve_solver_settings(self, solver):
+        if solver is None:
+            solver_name, optarg = self._default_solver_and_optarg()
+            return solver_name, optarg, get_solver(
+                solver=solver_name, solver_options=optarg
+            )
+        if isinstance(solver, str):
+            return solver, None, get_solver(solver=solver)
+
+        solver_name = getattr(solver, "name", None)
+        solver_options = dict(getattr(solver, "options", {}))
+        return solver_name, (solver_options if solver_options else None), solver
+
+    def _initialize_units(self, solver=None, optarg=None):
         # m = self.m
         iscale.calculate_scaling_factors(self.fs)
 
         # Initialize units and propagate states
-        self.fs.feed.initialize()
+        self.fs.feed.initialize(solver=solver, optarg=optarg)
         propagate_state(self.fs.arc0)
 
-        self.fs.sepa.initialize()
+        self.fs.sepa.initialize(solver=solver, optarg=optarg)
         propagate_state(self.fs.arc1b)
 
         self.fs.pump1.deltaP[0].fix(2e5)
-        self.fs.pump1.initialize()
+        self.fs.pump1.initialize(solver=solver, optarg=optarg)
         self.fs.pump1.deltaP[0].unfix()
 
         propagate_state(self.fs.arc2b)
 
         self.fs.pump0.deltaP[0].fix(2e5)
-        self.fs.pump0.initialize()
+        self.fs.pump0.initialize(solver=solver, optarg=optarg)
         self.fs.pump0.deltaP[0].unfix()
 
         propagate_state(self.fs.arc1f)
         propagate_state(self.fs.arc2f)
 
-        self.fs.EDstack.initialize()
+        self.fs.EDstack.initialize(solver=solver, optarg=optarg)
 
         propagate_state(self.fs.arc4)
-        self.fs.prod.initialize()
+        self.fs.prod.initialize(solver=solver, optarg=optarg)
 
         propagate_state(self.fs.arc5)
-        self.fs.prod.initialize()
-        self.fs.disp.initialize()
+        self.fs.prod.initialize(solver=solver, optarg=optarg)
+        self.fs.disp.initialize(solver=solver, optarg=optarg)
 
         if hasattr(self.fs, "costing"):
             self.fs.costing.initialize()
@@ -610,6 +640,7 @@ class OneStageSinglePassData(ProcessBlockData):
                 value(self.fs.voltage_per_cp),
                 value(self.fs.EDstack.current_applied[0]),
                 value(self.fs.EDstack.current_utilization),
+                value(self.fs.ocv),
             ],
             columns=["value"],
             index=[
@@ -624,6 +655,7 @@ class OneStageSinglePassData(ProcessBlockData):
                 "Cell-pair voltage, V",
                 "Stack current, A",
                 "Current Utilization",
+                "Open Circuit Voltage, V",
             ],
         )
         print(pm_table)

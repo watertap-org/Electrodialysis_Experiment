@@ -7,11 +7,11 @@ name = "electrodialysis_experiment"
 version = "0.1.0"
 description = "Experiments, models, and analysis for electrodialysis research."
 readme = "README.md"
-license = { text = "MIT" }
+license = { file = "LICENSE.md" }
 authors = [
   { name = "Xiangyu Bi", email = "xbi@lbl.gov" }
 ]
-requires-python = ">=3.9"
+requires-python = ">=3.9,<3.12"
 
 # ---- Runtime dependencies ----
 dependencies = [
@@ -60,12 +60,19 @@ where = ["src"]
 [tool.setuptools]
 include-package-data = true
 package-dir = { "" = "src" }
+license-files = ["LICENSE.md", "COPYRIGHT.md"]
 
 # Include non-code files in the package
 [tool.setuptools.package-data]
 electrodialysis_experiment = [
-  "**/*.yaml", "**/*.yml",
-  "**/*.csv", "**/*.parquet",
-  "**/*.h5", "**/*.hdf5"
+  "configs/**/*.yaml", "configs/**/*.yml",
+  "data/raw/*.csv", "data/raw/*.parquet"
 ]
 
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+markers = [
+  "slow: long-running NLP integration tests",
+  "requires_solver: tests that require ipopt-watertap solver availability",
+]

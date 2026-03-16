@@ -1,0 +1,167 @@
+``solution.py``
+===============
+
+Location
+--------
+
+``src/electrodialysis_experiment/processes/solution.py``
+
+Purpose
+-------
+
+``solution.py`` defines the aqueous property package used by the electrodialysis
+process models. Although it sits in the same folder as the process wrappers, it
+is not itself a flowsheet module. Instead, it provides the thermodynamic and
+transport-property layer that the process models depend on.
+
+The main exported blocks are:
+
+- ``MCASParameterBlock`` (implemented as ``MCASParameterData``), and
+- ``MCASStateBlock`` (implemented as ``MCASStateBlockData``).
+
+Together, these provide a multi-component aqueous solution representation for
+water plus ionic and optional neutral solutes.
+
+Role in the codebase
+--------------------
+
+This module is the shared property foundation for the process wrappers:
+
+- ``one_stage_single_pass.py`` builds one flowsheet around this property package.
+- ``k_stage_single_pass.py`` reuses the same property package across all stages.
+- The electrodialysis stack model in ``base.py`` consumes the same state and
+  property definitions.
+
+Because of that, ``solution.py`` is one of the most reused modules in the
+repository. Any change here can alter both physical behavior and solver
+conditioning across the entire project.
+
+What the property package represents
+------------------------------------
+
+The package supports a liquid aqueous phase with:
+
+- one solvent (water),
+- cations,
+- anions, and
+- optional neutral solutes.
+
+It is designed for cases where the model needs both composition bookkeeping and
+electrical properties relevant to membrane and electrodialysis calculations.
+
+Configurable modeling options
+-----------------------------
+
+The module exposes several important model-form choices through enums and config
+arguments:
+
+- ``DensityCalculation``:
+  constant density or seawater-style correlation.
+- ``DiffusivityCalculation``:
+  user-supplied diffusivity or Hayduk-Laudie-based diffusivity.
+- ``ElectricalMobilityCalculation``:
+  user-supplied mobility or mobility derived from the Einstein relation.
+- ``EquivalentConductivityCalculation``:
+  user-supplied, mobility-derived, or Onsager-Falkenhagen equivalent conductivity.
+- ``TransportNumberCalculation``:
+  user-supplied or mobility-derived liquid-phase transport number.
+
+These options control how much of the property package is data-driven versus
+computed from other supplied parameters.
+
+Main responsibilities
+---------------------
+
+``MCASParameterBlock`` is responsible for:
+
+- defining components and the aqueous phase,
+- storing molecular-weight, charge, diffusivity, mobility, and related property
+  data (including optional molar-volume data used by selected diffusivity
+  correlations),
+- validating configuration, and
+- defining metadata for the state block.
+
+``MCASStateBlock`` is responsible for:
+
+- state initialization and release,
+- state calculation from specified variables,
+- construction of derived thermodynamic and transport properties, and
+- scaling of the resulting state equations.
+
+Important computed properties
+-----------------------------
+
+The state block builds a broad set of quantities used by the electrodialysis
+models, including:
+
+- molar and mass component flows,
+- volumetric flow,
+- molar and mass concentrations,
+- equivalent concentrations and equivalent flows,
+- density and dynamic viscosity,
+- molar volume where configured,
+- diffusivity and electrical mobility,
+- ionic charge and absolute charge,
+- osmotic pressure,
+- liquid-phase transport numbers,
+- equivalent conductivity, conductivity, and electrical resistance, and
+- state/flow terms required by the ED stack control-volume balances.
+
+This is the module that makes the higher-level ED models aware of both ordinary
+solution composition and electrically relevant ion behavior.
+
+Important public methods
+------------------------
+
+On the parameter block:
+
+``build()``
+  Construct the parameter package, phases, and components.
+
+``define_metadata(...)``
+  Register property metadata used by IDAES.
+
+On the state block:
+
+``initialize(...)``
+  Initialize the indexed state blocks.
+
+``release_state(...)``
+  Undo temporary fixing applied during initialization.
+
+``calculate_state(...)``
+  Compute the state from a specified set of state variables.
+
+``define_state_vars()``
+  Declare which variables constitute the thermodynamic state.
+
+``calculate_scaling_factors()``
+  Apply state-block-specific scaling to improve numerical robustness.
+
+When to edit this file
+----------------------
+
+Edit ``solution.py`` when the change is about solution chemistry or transport
+properties, for example:
+
+- adding a new property correlation,
+- changing how ionic transport numbers are computed in the liquid phase,
+- extending charge-dependent transport/conductivity behavior, or
+- modifying how state variables are initialized or scaled.
+
+Do not edit this file for process topology changes such as adding stages or
+rewiring flowsheet arcs. Those belong in the process-wrapper modules.
+
+Practical caution
+-----------------
+
+This module is both a physics layer and a numerical layer. A change that looks
+small at the property level can affect:
+
+- convergence of initialization,
+- scaling behavior,
+- transport predictions inside the ED stack, and
+- every script that builds a process model.
+
+It is best treated as a shared foundational dependency, not as a
+workflow-specific customization point.

@@ -19,10 +19,6 @@ designed for use with the Donnan Steric Pore Model with Dielectric Exclusion (DS
 nanofiltration.
 """
 
-# TODO:
-#  -add calc option for Stokes radius from Stokes Einstein
-#  -add viscosity as func of temp and concentration
-
 # Import Python libraries
 import idaes.logger as idaeslog
 
@@ -34,7 +30,6 @@ from pyomo.environ import (
     Expression,
     Reals,
     NonNegativeReals,
-    log,
     Var,
     Param,
     Set,
@@ -43,9 +38,7 @@ from pyomo.environ import (
     check_optimal_termination,
     units as pyunits,
 )
-from pyomo.common.config import ConfigValue, In, Bool
-from pyomo.util.calc_var_value import calculate_variable_from_constraint
-from pyomo.core.base.units_container import InconsistentUnitsError
+from pyomo.common.config import ConfigValue, In
 
 # Import IDAES cores
 from idaes.core import (
@@ -79,21 +72,12 @@ from idaes.core.util.exceptions import (
 import idaes.core.util.scaling as iscale
 from watertap.core.util.scaling import transform_property_constraints
 
-
-__author__ = "Adam Atia, Xiangyu Bi, Hunter Barber, Kurban Sitterley"
-# Set up logger
 _log = idaeslog.getLogger(__name__)
-
-
-class ActivityCoefficientModel(Enum):
-    ideal = auto()  # Ideal
-    davies = auto()  # Davies
 
 
 class DensityCalculation(Enum):
     constant = auto()  # constant @ 1000 kg/m3
     seawater = auto()  # seawater correlation for TDS from Sharqawy
-    # TODO: add laliberte mixing correlation and/or ideal aqueous solution rule
 
 
 class DiffusivityCalculation(Enum):
@@ -126,14 +110,6 @@ class MCASParameterData(PhysicalParameterBlock):
         ConfigValue(
             domain=list,
             description="Required argument.List of strings that specify names of solute species.",
-        ),
-    )
-    CONFIG.declare(
-        "stokes_radius_data",
-        ConfigValue(
-            default={},
-            domain=dict,
-            description="Dict of solute species names (keys) and Stokes radius data (values)",
         ),
     )
     CONFIG.declare(
@@ -191,38 +167,6 @@ class MCASParameterData(PhysicalParameterBlock):
 
     CONFIG.declare(
         "charge", ConfigValue(default={}, domain=dict, description="Ion charge")
-    )
-    CONFIG.declare(
-        "ignore_neutral_charge",
-        ConfigValue(
-            default=False,
-            domain=Bool,
-            description="Boolean flag to raise ConfigurationError related to neutral charge.",
-            doc="""Level of reporting results.
-            **default** - False.
-            **Valid values:** {
-            **False** - raise ConfigurationError when charge value not provided for ALL solutes, including neutral solutes (charge=0),
-            **True** - will not raise ConfigurationError when charge not provided for particular solutes, assuming said solutes are meant to be designated as neutral.""",
-        ),
-    )
-    CONFIG.declare(
-        "activity_coefficient_model",
-        ConfigValue(
-            default=ActivityCoefficientModel.ideal,
-            domain=In(ActivityCoefficientModel),
-            description="Activity coefficient model construction flag",
-            doc="""
-           Options to account for activity coefficient model.
-
-           **default** - ``ActivityCoefficientModel.ideal``
-
-       .. csv-table::
-           :header: "Configuration Options", "Description"
-
-           "``ActivityCoefficientModel.ideal``", "Activity coefficients equal to 1 assuming ideal solution"
-           "``ActivityCoefficientModel.davies``", "Activity coefficients estimated via Davies model"
-       """,
-        ),
     )
     CONFIG.declare(
         "density_calculation",
@@ -417,14 +361,6 @@ class MCASParameterData(PhysicalParameterBlock):
             doc="Molecular weight",
         )
         # Stokes radius
-        self.radius_stokes_comp = Param(
-            self.solute_set,
-            mutable=True,
-            default=1e-10,
-            initialize=self.config.stokes_radius_data,
-            units=pyunits.m,
-            doc="Stokes radius of solute",
-        )
         self.molar_volume_phase_comp = Param(
             self.phase_list,
             self.solute_set,
@@ -434,7 +370,7 @@ class MCASParameterData(PhysicalParameterBlock):
             units=pyunits.m**3 / pyunits.mol,
             doc="molar volume of solutes",
         )
-        # TODO:revisit- assuming ~ 1e-3 Pa*s for pure water
+        # Assume ~1e-3 Pa*s for pure water
         self.visc_d_phase = Param(
             self.phase_list,
             mutable=True,
@@ -470,22 +406,6 @@ class MCASParameterData(PhysicalParameterBlock):
                 doc="Mass diffusivity of solute components",
             )
             self.diffus_phase_comp.fix()
-
-        # Dielectric constant of water
-        self.dielectric_constant = Param(
-            mutable=True,
-            default=80.4,
-            initialize=80.4,  # todo: make a variable with parameter values for coefficients in the function of temperature
-            units=pyunits.dimensionless,
-            doc="Dielectric constant of water",
-        )
-        self.debye_huckel_b = Param(
-            mutable=True,
-            default=0.3,
-            initialize=0.3,
-            units=pyunits.kg / pyunits.mol,
-            doc="Debye Huckel constant b",
-        )
 
         # Mass density
         # For constant density
@@ -572,7 +492,6 @@ class MCASParameterData(PhysicalParameterBlock):
         self.set_default_scaling("dens_mass_phase", 1e-3, index="Liq")
         self.set_default_scaling("visc_d_phase", 1e3, index="Liq")
         self.set_default_scaling("diffus_phase_comp", 1e10, index="Liq")
-        self.set_default_scaling("visc_k_phase", 1e6, index="Liq")
 
     @classmethod
     def define_metadata(cls, obj):
@@ -589,14 +508,10 @@ class MCASParameterData(PhysicalParameterBlock):
                 "flow_vol_phase": {"method": "_flow_vol_phase"},
                 "conc_mol_phase_comp": {"method": "_conc_mol_phase_comp"},
                 "conc_mass_phase_comp": {"method": "_conc_mass_phase_comp"},
-                "mole_frac_phase_comp": {"method": "_mole_frac_phase_comp"},
-                "molality_phase_comp": {"method": "_molality_phase_comp"},
                 "diffus_phase_comp": {"method": "_diffus_phase_comp"},
                 "visc_d_phase": {"method": "_visc_d_phase"},
-                "visc_k_phase": {"method": "_visc_k_phase"},
                 "pressure_osm_phase": {"method": "_pressure_osm_phase"},
                 "mw_comp": {"method": "_mw_comp"},
-                "act_coeff_phase_comp": {"method": "_act_coeff_phase_comp"},
             }
         )
 
@@ -610,14 +525,9 @@ class MCASParameterData(PhysicalParameterBlock):
                 "elec_cond_phase": {"method": "_elec_cond_phase"},
                 "elec_resistance_phase": {"method": "_elec_resistance_phase"},
                 "dens_mass_solvent": {"method": "_dens_mass_solvent"},
-                "dielectric_constant": {"method": "_dielectric_constant"},
-                "debye_huckel_constant": {"method": "_debye_huckel_constant"},
-                "ionic_strength_molal": {"method": "_ionic_strength_molal"},
                 "molar_volume_phase_comp": {"method": "_molar_volume_phase_comp"},
-                "radius_stokes_comp": {"method": "_radius_stokes_comp"},
                 "elec_mobility_phase_comp": {"method": "_elec_mobility_phase_comp"},
                 "trans_num_phase_comp": {"method": "_trans_num_phase_comp"},
-                "total_hardness": {"method": "_total_hardness"},
             }
         )
 
@@ -735,24 +645,6 @@ class _MCASStateBlock(StateBlock):
                         / self[k].params.mw_comp[j]
                     )
 
-                if self[k].is_property_constructed("mole_frac_phase_comp"):
-                    self[k].mole_frac_phase_comp["Liq", j].set_value(
-                        self[k].flow_mol_phase_comp["Liq", j]
-                        / sum(
-                            self[k].flow_mol_phase_comp["Liq", j]
-                            for j in self[k].params.component_list
-                        )
-                    )
-
-            # Vars indexed by solute_set
-            for j in self[k].params.solute_set:
-                if self[k].is_property_constructed("molality_phase_comp"):
-                    self[k].molality_phase_comp["Liq", j].set_value(
-                        self[k].flow_mol_phase_comp["Liq", j]
-                        / self[k].flow_mol_phase_comp["Liq", "H2O"]
-                        / self[k].params.mw_comp["H2O"]
-                    )
-
             # Vars indexed by ion_set
             for j in self[k].params.ion_set:
                 if (
@@ -785,19 +677,6 @@ class _MCASStateBlock(StateBlock):
                         for j in self[k].params.component_list
                     )
                     / self[k].dens_mass_phase["Liq"]
-                )
-            if self[k].is_property_constructed("visc_k_phase"):
-                self[k].visc_k_phase["Liq"].set_value(
-                    self[k].visc_d_phase["Liq"] / self[k].dens_mass_phase["Liq"]
-                )
-            if self[k].is_property_constructed("ionic_strength_molal"):
-                self[k].ionic_strength_molal.set_value(
-                    0.5
-                    * sum(
-                        self[k].charge_comp[j] ** 2
-                        * self[k].molality_phase_comp["Liq", j]
-                        for j in self[k].params.solute_set
-                    )
                 )
             if self[k].is_property_constructed("pressure_osm_phase"):
                 self[k].pressure_osm_phase["Liq"].set_value(
@@ -841,14 +720,6 @@ class _MCASStateBlock(StateBlock):
                 self[k].elec_resistance_phase["Liq"].set_value(
                     1 / self[k].elec_cond_phase["Liq"]
                 )
-
-            if self[k].is_property_constructed("total_hardness"):
-                if hasattr(self[k], "eq_total_hardness"):
-                    calculate_variable_from_constraint(
-                        self[k].total_hardness, self[k].eq_total_hardness
-                    )
-                else:
-                    self[k].total_hardness = 0
 
         # Check when the state vars are fixed already result in dof 0
         for k in self.keys():
@@ -1126,7 +997,6 @@ class MCASStateBlockData(StateBlockData):
             doc="Mass density",
         )
 
-        # TODO: reconsider this approach for solution density based on arbitrary solute_list
         def rule_dens_mass_phase(b, p):
             if b.params.config.density_calculation == DensityCalculation.constant:
                 add_object_reference(
@@ -1134,7 +1004,7 @@ class MCASStateBlockData(StateBlockData):
                 )
                 return b.dens_mass_phase[p] == self.dens_mass_const
             elif b.params.config.density_calculation == DensityCalculation.seawater:
-                # density, eq. 8 in Sharqawy #TODO- add Sharqawy reference
+                # density, eq. 8 in Sharqawy
                 t = b.temperature - 273.15 * pyunits.K
                 s = sum(b.mass_frac_phase_comp[p, j] for j in b.params.solute_set)
                 dens_mass = (
@@ -1284,68 +1154,6 @@ class MCASStateBlockData(StateBlockData):
             self.params.ion_set,
             rule=rule_conc_equiv_phase_comp,
         )
-
-    def _mole_frac_phase_comp(self):
-        self.mole_frac_phase_comp = Var(
-            self.params.phase_list,
-            self.params.component_list,
-            initialize=0.5,
-            bounds=(0, 1.001),
-            units=pyunits.dimensionless,
-            doc="Mole fraction",
-        )
-
-        def rule_mole_frac_phase_comp(b, p, j):
-            return b.mole_frac_phase_comp[p, j] == b.flow_mol_phase_comp[p, j] / sum(
-                b.flow_mol_phase_comp[p, j] for j in b.params.component_list
-            )
-
-        self.eq_mole_frac_phase_comp = Constraint(
-            self.params.phase_list,
-            self.params.component_list,
-            rule=rule_mole_frac_phase_comp,
-        )
-
-    def _molality_phase_comp(self):
-        self.molality_phase_comp = Var(
-            self.params.phase_list,
-            self.params.solute_set,
-            initialize=1,
-            bounds=(0, None),
-            units=pyunits.mole / pyunits.kg,
-            doc="Molality",
-        )
-
-        def rule_molality_phase_comp(b, p, j):
-            return (
-                b.molality_phase_comp[p, j]
-                == b.flow_mol_phase_comp[p, j]
-                / b.flow_mol_phase_comp[p, "H2O"]
-                / b.params.mw_comp["H2O"]
-            )
-
-        self.eq_molality_phase_comp = Constraint(
-            self.params.phase_list,
-            self.params.solute_set,
-            rule=rule_molality_phase_comp,
-        )
-
-    def _visc_k_phase(self):
-        self.visc_k_phase = Var(
-            ["Liq"],
-            initialize=1e-6,
-            bounds=(9e-7, 5e-2),
-            units=pyunits.m**2 / pyunits.s,
-            doc="Kinematic Viscosity",
-        )
-
-        def rule_visc_k_phase(b, p):
-            return b.visc_d_phase[p] == b.visc_k_phase[p] * b.dens_mass_phase[p]
-
-        self.eq_visc_k_phase = Constraint(["Liq"], rule=rule_visc_k_phase)
-
-    def _radius_stokes_comp(self):
-        add_object_reference(self, "radius_stokes_comp", self.params.radius_stokes_comp)
 
     def _molar_volume_phase_comp(self):
         add_object_reference(
@@ -1537,102 +1345,6 @@ class MCASStateBlockData(StateBlockData):
     def _charge_comp_abs(self):
         add_object_reference(self, "charge_comp_abs", self.params.charge_comp_abs)
 
-    def _dielectric_constant(self):
-        add_object_reference(
-            self, "dielectric_constant", self.params.dielectric_constant
-        )
-
-    def _act_coeff_phase_comp(self):
-        self.act_coeff_phase_comp = Var(
-            self.params.phase_list,
-            self.params.solute_set,
-            initialize=0.7,
-            domain=NonNegativeReals,
-            units=pyunits.dimensionless,
-            doc="activity coefficient of component",
-        )
-
-        def rule_act_coeff_phase_comp(b, p, j):
-            if (
-                b.params.config.activity_coefficient_model
-                == ActivityCoefficientModel.ideal
-            ):
-                return b.act_coeff_phase_comp[p, j] == 1
-            elif (
-                b.params.config.activity_coefficient_model
-                == ActivityCoefficientModel.davies
-            ):
-                I = b.ionic_strength_molal
-                return log(
-                    b.act_coeff_phase_comp[p, j]
-                ) == -b.debye_huckel_constant * b.charge_comp[j] ** 2 * (
-                    I**0.5 / (1 * pyunits.mole**0.5 / pyunits.kg**0.5 + I**0.5)
-                    - b.params.debye_huckel_b * I
-                )
-
-        self.eq_act_coeff_phase_comp = Constraint(
-            self.params.phase_list,
-            self.params.solute_set,
-            rule=rule_act_coeff_phase_comp,
-        )
-
-    # TODO: note- assuming molal ionic strength goes into Debye Huckel relationship;
-    # the MIT's DSPMDE paper indicates usage of molar concentration
-    def _ionic_strength_molal(self):
-        self.ionic_strength_molal = Var(
-            initialize=1,
-            domain=NonNegativeReals,
-            units=pyunits.mol / pyunits.kg,
-            doc="Molal ionic strength",
-        )
-
-        def rule_ionic_strength_molal(b):
-            return b.ionic_strength_molal == 0.5 * sum(
-                b.charge_comp[j] ** 2 * b.molality_phase_comp["Liq", j]
-                for j in self.params.ion_set
-            )
-
-        self.eq_ionic_strength_molal = Constraint(rule=rule_ionic_strength_molal)
-
-    def _debye_huckel_constant(self):
-        self.debye_huckel_constant = Var(
-            initialize=1,
-            domain=NonNegativeReals,
-            units=pyunits.dimensionless,
-            # TODO: units are technically (kg/mol)**0.5, but Debye Huckel equation
-            #  is empirical and units don't seem to cancel as typical. leaving as dimensionless for now
-            doc="Temperature-dependent Debye Huckel constant A",
-        )
-
-        def rule_debye_huckel_constant(b):
-            return (
-                b.debye_huckel_constant
-                == ((2 * Constants.pi * Constants.avogadro_number) ** 0.5 / log(10))
-                * (
-                    Constants.elemental_charge**2
-                    / (
-                        4
-                        * Constants.pi
-                        * Constants.vacuum_electric_permittivity
-                        * b.params.dielectric_constant
-                        * Constants.boltzmann_constant
-                        * b.temperature
-                    )
-                )
-                ** (3 / 2)
-                * (
-                    pyunits.coulomb**3
-                    * pyunits.m**1.5
-                    / pyunits.farad**1.5
-                    / pyunits.J**1.5
-                    / pyunits.mol**0.5
-                )
-                ** -1
-            )
-
-        self.eq_debye_huckel_constant = Constraint(rule=rule_debye_huckel_constant)
-
-    # TODO: change osmotic pressure calc
     def _pressure_osm_phase(self):
         self.pressure_osm_phase = Var(
             self.params.phase_list,
@@ -1842,44 +1554,6 @@ class MCASStateBlockData(StateBlockData):
             self.params.phase_list, rule=rule_elec_resistance_phase
         )
 
-    def _total_hardness(self):
-        self.total_hardness = Var(
-            initialize=1000,
-            domain=NonNegativeReals,
-            bounds=(0, None),
-            units=pyunits.mg / pyunits.L,
-            doc="total hardness as CaCO3",
-        )
-        # add try/except to handle case without multivalent cations,
-        # which would return 0 and result in Inconsitentunits error due to conversion of dimensionless to mg/L
-        try:
-            total_hardness_temp = pyunits.convert(
-                sum(
-                    self.flow_mol_phase_comp["Liq", j]
-                    / self.flow_vol_phase["Liq"]
-                    * 100.0869
-                    * pyunits.g
-                    / pyunits.mol
-                    * float(value(self.charge_comp[j]))
-                    / 2.0
-                    for j in self.params.cation_set
-                    if value(self.charge_comp[j]) > 1
-                ),
-                to_units=pyunits.mg / pyunits.L,
-            )
-
-            def rule_total_hardness(b):
-                return b.total_hardness == total_hardness_temp
-
-            self.eq_total_hardness = Constraint(rule=rule_total_hardness)
-
-        except InconsistentUnitsError:
-            self.total_hardness.fix(0)
-            _log.warning(
-                "Since no multivalent cations were specified in solute_list, total_hardness need not be created. total_hardness has been fixed to 0."
-            )
-            return
-
     # -----------------------------------------------------------------------------
     # General Methods
     # NOTE: For scaling in the control volume to work properly, these methods must
@@ -1891,18 +1565,6 @@ class MCASStateBlockData(StateBlockData):
             return self.flow_mol_phase_comp[p, j]
         elif self.params.config.material_flow_basis == MaterialFlowBasis.mass:
             return self.flow_mass_phase_comp[p, j]
-
-    # TODO: add enthalpy terms later
-    # def get_enthalpy_flow_terms(self, p):
-    #     """Create enthalpy flow terms."""
-    #     return self.enth_flow
-
-    # TODO: make property package compatible with dynamics
-    # def get_material_density_terms(self, p, j):
-    #     """Create material density terms."""
-
-    # def get_enthalpy_density_terms(self, p):
-    #     """Create enthalpy density terms."""
 
     def default_material_balance_type(self):
         return MaterialBalanceType.componentTotal
@@ -1937,145 +1599,6 @@ class MCASStateBlockData(StateBlockData):
         else:
             raise PropertyPackageError(
                 f"{self.name} MCAS Property Package set to use unsupported material flow basis: {self.get_material_flow_basis()}"
-            )
-
-    def assert_electroneutrality(
-        self,
-        tol=None,
-        tee=True,
-        defined_state=True,
-        adjust_by_ion=None,
-        get_property=None,
-        solve=True,
-    ):
-        """
-        TODO: add descriptions of args and what is returned
-        """
-        if self.params.config.material_flow_basis == MaterialFlowBasis.molar:
-            state_var = self.flow_mol_phase_comp
-        elif self.params.config.material_flow_basis == MaterialFlowBasis.mass:
-            state_var = self.flow_mass_phase_comp
-        else:
-            raise PropertyPackageError(
-                f"{self.name} MCAS Property Package set to use unsupported material flow basis: {self.get_material_flow_basis()}"
-            )
-
-        if tol is None:
-            tol = 1e-8
-        if not defined_state and get_property is not None:
-            raise ValueError(
-                f"Set defined_state to true if get_property = {get_property}"
-            )
-        if adjust_by_ion is not None:
-            if adjust_by_ion in self.params.ion_set:
-                self.charge_balance = Constraint(
-                    expr=sum(
-                        self.charge_comp[j] * self.conc_mol_phase_comp["Liq", j]
-                        for j in self.params.ion_set
-                    )
-                    == 0
-                )
-            else:
-                if not len(self.params.ion_set) and len(self.params.neutral_set) > 0:
-                    raise ValueError(
-                        f"adjust_by_ion must be set to the name of an ion in the ion_set. Since the charge argument was not provided for any solutes while instantiating the MCAS property model, all solutes in solute_list were considered as neutral solutes without any charge."
-                    )
-                else:
-                    raise ValueError(
-                        "adjust_by_ion must be set to the name of an ion in the ion_set."
-                    )
-        if defined_state:
-            for j in self.params.solute_set:
-                if not state_var["Liq", j].is_fixed() and adjust_by_ion != j:
-                    raise AssertionError(
-                        f"{state_var['Liq', j]} was not fixed. Fix {state_var} for each solute"
-                        f" to check that electroneutrality is satisfied."
-                    )
-                if adjust_by_ion == j and state_var["Liq", j].is_fixed():
-                    state_var["Liq", j].unfix()
-        else:
-            for j in self.params.solute_set:
-                # TODO: check if DOF=0 for defined_state=False valid case? Test with defined_state=false
-                if state_var["Liq", j].is_fixed():
-                    raise AssertionError(
-                        f"{state_var['Liq', j]} was fixed. Either set defined_state=True or unfix "
-                        f"{state_var} for each solute to check that electroneutrality is satisfied."
-                    )
-
-        # touch this var since it is required for this method
-        self.conc_mol_phase_comp
-
-        if solve:
-            if adjust_by_ion is not None:
-                ion_before_adjust = state_var["Liq", adjust_by_ion].value
-            solve = get_solver()
-            solve.solve(self)
-            results = solve.solve(self)
-            if check_optimal_termination(results):
-                val = value(
-                    sum(
-                        self.charge_comp[j] * self.conc_mol_phase_comp["Liq", j]
-                        for j in self.params.ion_set
-                    )
-                )
-            else:
-                if adjust_by_ion is not None:
-                    del self.charge_balance
-                raise ValueError(
-                    "The stateblock failed to solve while computing concentrations to check the charge balance."
-                )
-        else:
-            val = value(
-                sum(
-                    self.charge_comp[j] * self.conc_mol_phase_comp["Liq", j]
-                    for j in self.params.ion_set
-                )
-            )
-        if abs(val) <= tol:
-            if adjust_by_ion is not None:
-                del self.charge_balance
-                ion_adjusted = state_var["Liq", adjust_by_ion].value
-                if defined_state:
-                    state_var["Liq", adjust_by_ion].fix(ion_adjusted)
-                    # touch on-demand property desired
-                    if get_property is not None:
-                        if isinstance(get_property, str):
-                            getattr(self, get_property)
-                        elif isinstance(get_property, (list, tuple)):
-                            for i in get_property:
-                                getattr(self, i)
-                        else:
-                            raise TypeError(
-                                "get_property must be a string or list/tuple of strings."
-                            )
-                        res_with_prop = solve.solve(self)
-                        if not check_optimal_termination(res_with_prop):
-                            raise ValueError(
-                                f"The stateblock failed to solve while solving with on-demand property"
-                                f" {get_property}."
-                            )
-                    msg = (
-                        f"{adjust_by_ion} adjusted: {state_var}['Liq',{adjust_by_ion}] was adjusted from "
-                        f"{ion_before_adjust} and fixed "
-                        f"to {ion_adjusted}."
-                    )
-                else:
-                    msg = (
-                        f"{adjust_by_ion} was adjusted and the value computed for {state_var}['Liq',{adjust_by_ion}]"
-                        f" is {ion_adjusted}."
-                    )
-
-            else:
-                msg = ""
-            if tee:
-                return print(
-                    f"{msg} Electroneutrality satisfied for {self}. Balance Result = {val}"
-                )
-
-        else:
-            raise AssertionError(
-                f"Electroneutrality condition violated in {self}. Ion concentrations should be adjusted to bring "
-                f"the result of {val:.2E} closer towards 0."
             )
 
     # -----------------------------------------------------------------------------
@@ -2172,10 +1695,6 @@ class MCASStateBlockData(StateBlockData):
             for p, v in self.visc_d_phase.items():
                 if iscale.get_scaling_factor(v) is None:
                     iscale.set_scaling_factor(self.visc_d_phase[p], 1e3)
-        if self.is_property_constructed("visc_k_phase"):
-            for p, v in self.visc_k_phase.items():
-                if iscale.get_scaling_factor(v) is None:
-                    iscale.set_scaling_factor(self.visc_k_phase[p], 1e6)
         if self.is_property_constructed("flow_vol_phase"):
             sf = (
                 iscale.get_scaling_factor(
@@ -2189,25 +1708,6 @@ class MCASStateBlockData(StateBlockData):
         if self.is_property_constructed("flow_vol"):
             sf = iscale.get_scaling_factor(self.flow_vol_phase)
             iscale.set_scaling_factor(self.flow_vol, sf)
-        if self.is_property_constructed("mole_frac_phase_comp"):
-            for j in self.params.component_list:
-                if (
-                    iscale.get_scaling_factor(self.mole_frac_phase_comp["Liq", j])
-                    is None
-                ):
-                    if j == "H2O":
-                        iscale.set_scaling_factor(
-                            self.mole_frac_phase_comp["Liq", j], 1
-                        )
-                    else:
-                        sf = iscale.get_scaling_factor(
-                            self.flow_mol_phase_comp["Liq", j]
-                        ) / iscale.get_scaling_factor(
-                            self.flow_mol_phase_comp["Liq", "H2O"]
-                        )
-                        iscale.set_scaling_factor(
-                            self.mole_frac_phase_comp["Liq", j], sf
-                        )
 
         if self.is_property_constructed("mass_frac_phase_comp"):
             for j in self.params.component_list:
@@ -2377,69 +1877,8 @@ class MCASStateBlockData(StateBlockData):
                     sf = iscale.get_scaling_factor(self.elec_cond_phase[ind]) ** -1
                     # print(f"scaling factor for elec_resistance_phase {ind} is {sf}")
                     iscale.set_scaling_factor(self.elec_resistance_phase[ind], sf)
-
-        if self.is_property_constructed("molality_phase_comp"):
-            for j in self.params.solute_set:
-                if (
-                    iscale.get_scaling_factor(self.molality_phase_comp["Liq", j])
-                    is None
-                ):
-                    sf = (
-                        iscale.get_scaling_factor(self.flow_mol_phase_comp["Liq", j])
-                        / iscale.get_scaling_factor(
-                            self.flow_mol_phase_comp["Liq", "H2O"]
-                        )
-                        / iscale.get_scaling_factor(self.mw_comp["H2O"])
-                    )
-                    iscale.set_scaling_factor(self.molality_phase_comp["Liq", j], sf)
-
-        if self.is_property_constructed("act_coeff_phase_comp"):
-            for j in self.params.solute_set:
-                if (
-                    iscale.get_scaling_factor(self.act_coeff_phase_comp["Liq", j])
-                    is None
-                ):
-                    iscale.set_scaling_factor(self.act_coeff_phase_comp["Liq", j], 1)
-
-        if self.is_property_constructed("debye_huckel_constant"):
-            if iscale.get_scaling_factor(self.debye_huckel_constant) is None:
-                iscale.set_scaling_factor(self.debye_huckel_constant, 10)
-
-        if self.is_property_constructed("ionic_strength_molal"):
-            if iscale.get_scaling_factor(self.ionic_strength_molal) is None:
-                sf = (
-                    sum(
-                        iscale.get_scaling_factor(self.molality_phase_comp["Liq", j])
-                        ** -1
-                        * iscale.get_scaling_factor(self.charge_comp[j]) ** -1
-                        for j in self.params.solute_set
-                    )
-                    ** -1
-                    * 2
-                )
-                iscale.set_scaling_factor(self.ionic_strength_molal, sf)
-
-        if self.is_property_constructed("total_hardness"):
-            if iscale.get_scaling_factor(self.total_hardness) is None:
-                if value(self.total_hardness) == 0:
-                    sf = 1
-                else:
-                    sf = 10 / value(self.total_hardness)
-                iscale.set_scaling_factor(self.total_hardness, sf)
         # transforming constraints
         transform_property_constraints(self)
-
-        if self.is_property_constructed("debye_huckel_constant"):
-            iscale.constraint_scaling_transform(self.eq_debye_huckel_constant, 10)
-
-        if self.is_property_constructed("ionic_strength_molal"):
-            iscale.constraint_scaling_transform(self.eq_ionic_strength_molal, 1)
-
-        if self.is_property_constructed("total_hardness") and hasattr(
-            self, "eq_total_hardness"
-        ):
-            sf = iscale.get_scaling_factor(self.total_hardness)
-            iscale.constraint_scaling_transform(self.eq_total_hardness, sf)
 
         if hasattr(self, "eq_diffus_phase_comp"):
             for ind, v in self.eq_diffus_phase_comp.items():

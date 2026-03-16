@@ -17,3 +17,6 @@ Thumbs.db
 
 # Build and packaging
 build/
+
+# Sphinx build output
+docs/_build/

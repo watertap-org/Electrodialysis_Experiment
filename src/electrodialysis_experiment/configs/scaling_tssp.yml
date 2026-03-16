@@ -1,0 +1,48 @@
+scaling:
+  properties:
+    - var: flow_mol_phase_comp
+      index: ["Liq", "H2O"]
+      factor: 1
+    - var: flow_mol_phase_comp
+      index: ["Liq", "Na_+"]
+      factor: 2000
+    - var: flow_mol_phase_comp
+      index: ["Liq", "Mg_2+"]
+      factor: 50000
+    - var: flow_mol_phase_comp
+      index: ["Liq", "Cl_-"]
+      factor: 2000
+    - var: flow_mol_phase_comp
+      index: ["Liq", "Ca_2+"]
+      factor: 100000
+    - var: flow_vol_phase
+      index: ["Liq"]
+      factor: 50000
+
+  components:
+    - target: fs.EDstack[1].unit.cell_width
+      factor: 5
+    - target: fs.EDstack[1].unit.cell_length
+      factor: 1
+    - target: fs.EDstack[1].unit.cell_pair_num
+      factor: 0.01
+    - target: fs.EDstack[1].unit.voltage_applied
+      factor: 0.1
+    - target: fs.EDstack[1].unit.diluate.power_electrical_x
+      factor: 1
+
+    - target: fs.EDstack[2].unit.cell_width
+      factor: 5
+    - target: fs.EDstack[2].unit.cell_length
+      factor: 1
+    - target: fs.EDstack[2].unit.cell_pair_num
+      factor: 0.01
+    - target: fs.EDstack[2].unit.voltage_applied
+      factor: 0.1
+    - target: fs.EDstack[2].unit.diluate.power_electrical_x
+      factor: 1
+
+    - target: fs.pump0.control_volume.work
+      factor: 10
+    - target: fs.pump1.control_volume.work
+      factor: 10

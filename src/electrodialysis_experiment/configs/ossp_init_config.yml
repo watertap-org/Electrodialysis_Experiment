@@ -12,9 +12,9 @@ InitialValue:
       value: 101325
 
     # --- pumps ---
-    - scalarVar: fs.pump0.efficiency_pump
+    - scalarVar: fs.pump0.efficiency_pump[0]
       value: 0.8
-    - scalarVar: fs.pump1.efficiency_pump
+    - scalarVar: fs.pump1.efficiency_pump[0]
       value: 0.8
 
     # --- ED stack ---
@@ -22,14 +22,14 @@ InitialValue:
     # - scalarVar: fs.experimental_voltage
     #   value: 10
     ## for operation_mode: Constant_Current
-    - scalarVar: fs.EDstack.current_applied
+    - scalarVar: fs.EDstack.current_applied[0]
       value: 0.3
     - scalarVar: fs.ocv
       value: 4.35
       mode: set
       lb: 0
       ub: 10
-    - scalarVar: fs.EDstack.pressure_drop
+    - scalarVar: fs.EDstack.pressure_drop[0]
       value: 150000
     - scalarVar: fs.EDstack.cell_pair_num
       value: 10
