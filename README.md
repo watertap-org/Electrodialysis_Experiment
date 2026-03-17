@@ -2,22 +2,7 @@
 
 A Python package for simulating electrodialysis experiments to assist electrodialysis process design, control, and optimization. 
 
-## Installation 
-
-Clone the repository and install in development mode:
-
-```bash
-pip install -e .
-```
-
-## Prerequisites
-
-- Python: `3.9`-`3.11` (see `pyproject.toml`)
-- IPOPT available on PATH (preferred linear solver: `ma27`)
-- Fast tests: `pytest -m "not slow"`
-- Full tests: `pytest`
-
-## Solver Setup (IDAES)
+## Start Here: Solver + Environment (Recommended)
 
 If you use IDAES-managed solver binaries (recommended for this project), do this in a fresh conda environment:
 
@@ -28,7 +13,7 @@ pip install -e ".[dev]"
 idaes get-extensions
 ```
 
-For this package, start all process runs/training with the WaterTAP IPOPT wrapper:
+For this package, use the WaterTAP IPOPT wrapper for process initialization and NLP solves:
 
 ```python
 from idaes.core.solvers import get_solver
@@ -62,6 +47,27 @@ PY
 
 Notes:
 - If you use `idaes get-extensions`, you generally do not need a separate `conda install ipopt`.
+
+## Installation
+
+If your environment is already prepared, install in editable mode:
+
+```bash
+pip install -e .
+```
+
+For development and tests:
+
+```bash
+pip install -e ".[dev]"
+```
+
+## Prerequisites
+
+- Python: `3.9`-`3.11` (see `pyproject.toml`)
+- IPOPT available on PATH (preferred linear solver: `ma27`)
+- Fast tests: `pytest -m "not slow"`
+- Full tests: `pytest`
 
 ## Demo Files
 
