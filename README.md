@@ -2,7 +2,9 @@
 
 A Python package for simulating electrodialysis experiments to assist electrodialysis process design, control, and optimization. 
 
-## Start Here: Solver + Environment (Recommended)
+## Installation
+
+### 1. Environment and Solver Setup (IDAES Recommended)
 
 If you use IDAES-managed solver binaries (recommended for this project), do this in a fresh conda environment:
 
@@ -48,9 +50,7 @@ PY
 Notes:
 - If you use `idaes get-extensions`, you generally do not need a separate `conda install ipopt`.
 
-## Installation
-
-If your environment is already prepared, install in editable mode:
+### 2. Install Package
 
 ```bash
 pip install -e .
