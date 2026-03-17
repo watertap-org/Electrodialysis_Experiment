@@ -4,15 +4,21 @@ A Python package for simulating electrodialysis experiments to assist electrodia
 
 ## Installation
 
-### 1. Environment and Solver Setup (IDAES Recommended)
+### Recommended Setup (IDAES + editable install)
 
 If you use IDAES-managed solver binaries (recommended for this project), do this in a fresh conda environment:
 
 ```bash
 conda create -n edexp python=3.11 -y
 conda activate edexp
-pip install -e ".[dev]"
+pip install -e .
 idaes get-extensions
+```
+
+For development and tests, use:
+
+```bash
+pip install -e ".[dev]"
 ```
 
 For this package, use the WaterTAP IPOPT wrapper for process initialization and NLP solves:
@@ -49,18 +55,6 @@ PY
 
 Notes:
 - If you use `idaes get-extensions`, you generally do not need a separate `conda install ipopt`.
-
-### 2. Install Package
-
-```bash
-pip install -e .
-```
-
-For development and tests:
-
-```bash
-pip install -e ".[dev]"
-```
 
 ## Prerequisites
 
