@@ -16,4 +16,6 @@ Contents
    base
    solution
    one_stage_single_pass
+   one_stage_concentrate_recirculation
    k_stage_single_pass
+   k_stage_concentrate_recirculation

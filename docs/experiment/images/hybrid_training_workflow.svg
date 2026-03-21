@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="860" viewBox="0 0 1400 860">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#b7c4d6"/>
+    </marker>
+    <marker id="arrow_orange" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#ffb86c"/>
+    </marker>
+    <style>
+      .title { fill:#eaf1fb; font: 700 40px 'Arial', sans-serif; }
+      .subtitle { fill:#9fb3cc; font: 500 19px 'Arial', sans-serif; }
+      .box_title { fill:#f3f8ff; font: 700 24px 'Arial', sans-serif; }
+      .box_text { fill:#d7e3f2; font: 500 20px 'Arial', sans-serif; }
+      .eq { fill:#ffd39a; font: 700 24px 'Courier New', monospace; }
+      .label { fill:#c8d4e4; font: 500 18px 'Arial', sans-serif; }
+      .loop_label { fill:#ffc17b; font: 600 18px 'Arial', sans-serif; }
+    </style>
+  </defs>
+
+  <rect x="0" y="0" width="1400" height="860" fill="#0c1220"/>
+
+  <text x="60" y="74" class="title">Hybrid ED Workflow: Process Model + Surrogate Training</text>
+  <text x="60" y="108" class="subtitle">Explicit closure for membrane ion transport numbers: S(.) predicts t_i^m from local state</text>
+
+  <rect x="50" y="170" width="350" height="290" rx="18" fill="#13263f" stroke="#4a9fda" stroke-width="2.5"/>
+  <text x="75" y="214" class="box_title">Experimental Inputs</text>
+  <text x="75" y="254" class="box_text">- feed solution variables c_feed</text>
+  <text x="75" y="287" class="box_text">- operating variables u</text>
+  <text x="75" y="320" class="box_text">- measured product concentrations</text>
+  <text x="75" y="353" class="box_text">  c_prod,exp</text>
+  <text x="75" y="405" class="label">Data map: one sample block per experiment</text>
+
+  <rect x="440" y="145" width="540" height="500" rx="20" fill="none" stroke="#334862" stroke-width="2" stroke-dasharray="10 8"/>
+  <text x="460" y="182" class="label">Sample-level model block</text>
+
+  <rect x="490" y="210" width="440" height="165" rx="16" fill="#1b3350" stroke="#6fb5e2" stroke-width="2.5"/>
+  <text x="515" y="252" class="box_title">Physics-Based ED Process Model P(.)</text>
+  <text x="515" y="292" class="box_text">Mass/charge balances + unit connectivity</text>
+  <text x="515" y="325" class="box_text">Solves concentrations along the process</text>
+
+  <rect x="490" y="430" width="440" height="175" rx="16" fill="#372544" stroke="#b589d6" stroke-width="2.5"/>
+  <text x="515" y="472" class="box_title">Surrogate Transport Closure S(.)</text>
+  <text x="515" y="512" class="eq">S(c_local, u; theta_surr) -&gt; t_i^m</text>
+  <text x="515" y="548" class="box_text">Surrogate model for membrane ion transport number</text>
+  <text x="515" y="580" class="box_text">for cations i in {Na+, Ca2+, Mg2+}</text>
+
+  <rect x="1030" y="210" width="320" height="165" rx="16" fill="#1f3b2e" stroke="#6ed2a7" stroke-width="2.5"/>
+  <text x="1055" y="252" class="box_title">Model Predictions</text>
+  <text x="1055" y="292" class="box_text">Predicted product concentrations</text>
+  <text x="1055" y="325" class="box_text">c_prod,pred</text>
+
+  <rect x="1030" y="430" width="320" height="205" rx="16" fill="#4b2d19" stroke="#ffb86c" stroke-width="2.5"/>
+  <text x="1055" y="472" class="box_title">Training Objective</text>
+  <text x="1055" y="511" class="eq">min  sum_i,v w_v (c_pred - c_exp)^2</text>
+  <text x="1055" y="548" class="box_text">Optimize shared surrogate parameters</text>
+  <text x="1055" y="580" class="eq">theta_surr</text>
+
+  <line x1="400" y1="255" x2="490" y2="255" stroke="#b7c4d6" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="415" y="240" class="label">c_feed, u</text>
+
+  <line x1="400" y1="335" x2="490" y2="500" stroke="#b7c4d6" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="410" y="405" class="label">conditioning vars</text>
+
+  <line x1="930" y1="292" x2="1030" y2="292" stroke="#b7c4d6" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="942" y="277" class="label">simulate</text>
+
+  <line x1="1245" y1="375" x2="1245" y2="430" stroke="#b7c4d6" stroke-width="3" marker-end="url(#arrow)"/>
+
+  <line x1="930" y1="500" x2="930" y2="292" stroke="#c59ce8" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="780" y="390" class="label">t_i^m from S(.)</text>
+
+  <line x1="710" y1="375" x2="710" y2="430" stroke="#8fc3e8" stroke-width="3" marker-end="url(#arrow)"/>
+  <text x="720" y="405" class="label">local state c_local</text>
+
+  <line x1="1030" y1="552" x2="930" y2="552" stroke="#ffb86c" stroke-width="3" marker-end="url(#arrow_orange)"/>
+  <text x="942" y="536" class="loop_label">optimizer update of theta_surr</text>
+
+  <line x1="350" y1="360" x2="1030" y2="520" stroke="#8f9fb3" stroke-width="2.5" stroke-dasharray="8 8" marker-end="url(#arrow)"/>
+  <text x="640" y="470" class="label">compare predictions with measurements</text>
+
+  <rect x="50" y="700" width="1300" height="110" rx="14" fill="#0f1a2c" stroke="#2c3f57" stroke-width="1.8"/>
+  <text x="75" y="740" class="box_text">Key message: the surrogate is not a generic black box; it is the transport-number closure in the ED process model.</text>
+  <text x="75" y="774" class="box_text">S(.) provides t_i^m for each sample/state, while the process model enforces physics and computes concentration outcomes.</text>
+</svg>

@@ -425,6 +425,9 @@ def prepare_cation_cem_transport_number_estimate_vas(
     product_name: list = ["CpNa", "CpCa", "CpMg"],
 ) -> List[Dict[str, float]]:
     """Compute transport numbers based on charge balance."""
+    def _clip_0_1(v: float) -> float:
+        return max(0.0, min(1.0, float(v)))
+
     trans_list = []
     for _, row in df.iterrows():
         total_charge_in = sum(
@@ -445,9 +448,9 @@ def prepare_cation_cem_transport_number_estimate_vas(
 
         trans_list.append(
             {
-                "Na_+": t_Na,
-                "Ca_2+": t_Ca,
-                "Mg_2+": t_Mg,
+                "Na_+": _clip_0_1(t_Na),
+                "Ca_2+": _clip_0_1(t_Ca),
+                "Mg_2+": _clip_0_1(t_Mg),
             }
         )
 
@@ -458,6 +461,9 @@ def prepare_cation_cem_transport_number_estimate(
     df: pd.DataFrame,
 ) -> List[Dict[str, float]]:
     """Compute transport numbers based on charge balance."""
+    def _clip_0_1(v: float) -> float:
+        return max(0.0, min(1.0, float(v)))
+
     trans_list = []
     for _, row in df.iterrows():
         total_charge_in = row["CfNa"] + 2 * row["CfCa"] + 2 * row["CfMg"]
@@ -474,9 +480,9 @@ def prepare_cation_cem_transport_number_estimate(
 
         trans_list.append(
             {
-                "Na_+": t_Na,
-                "Ca_2+": t_Ca,
-                "Mg_2+": t_Mg,
+                "Na_+": _clip_0_1(t_Na),
+                "Ca_2+": _clip_0_1(t_Ca),
+                "Mg_2+": _clip_0_1(t_Mg),
             }
         )
 

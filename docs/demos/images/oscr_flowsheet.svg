@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="430" viewBox="0 0 1200 430">
+  <defs>
+    <marker id="arrow" markerWidth="7" markerHeight="5" refX="6.5" refY="2.5" orient="auto">
+      <polygon points="0 0, 7 2.5, 0 5" fill="#1f2937"/>
+    </marker>
+    <style>
+      .box { fill: #f8fafc; stroke: #1f2937; stroke-width: 2; rx: 8; ry: 8; }
+      .ed { fill: #ecfeff; stroke: #0f766e; stroke-width: 2; rx: 8; ry: 8; }
+      .txt { font-family: Arial, sans-serif; font-size: 18px; fill: #111827; }
+      .small { font-family: Arial, sans-serif; font-size: 14px; fill: #374151; }
+      .line { stroke: #1f2937; stroke-width: 2.5; fill: none; marker-end: url(#arrow); }
+      .title { font-family: Arial, sans-serif; font-size: 24px; font-weight: bold; fill: #0f172a; }
+    </style>
+  </defs>
+
+  <text x="30" y="40" class="title">One-Stage Concentrate-Recycle Electrodialysis (demo_oscr_proc.py)</text>
+
+  <rect class="box" x="40" y="180" width="130" height="60"/>
+  <text class="txt" x="88" y="218">Feed</text>
+
+  <rect class="box" x="210" y="184" width="110" height="52"/>
+  <text class="txt" x="222" y="217">Separator 0</text>
+
+  <rect class="box" x="400" y="95" width="110" height="52"/>
+  <text class="txt" x="424" y="127">Mixer</text>
+
+  <rect class="box" x="580" y="95" width="110" height="52"/>
+  <text class="txt" x="604" y="127">Pump 0</text>
+  <text class="small" x="599" y="142">concentrate</text>
+
+  <rect class="box" x="400" y="265" width="110" height="52"/>
+  <text class="txt" x="424" y="297">Pump 1</text>
+  <text class="small" x="427" y="312">diluate</text>
+
+  <rect class="ed" x="760" y="95" width="220" height="190"/>
+  <text class="txt" x="822" y="145">ED Stack</text>
+  <text class="small" x="792" y="170">Concentrate channel</text>
+  <text class="small" x="815" y="232">Diluate channel</text>
+
+  <rect class="box" x="1040" y="120" width="120" height="52"/>
+  <text class="txt" x="1052" y="152">Separator 1</text>
+
+  <rect class="box" x="1040" y="35" width="130" height="52"/>
+  <text class="txt" x="1065" y="67">Disposal</text>
+
+  <rect class="box" x="1040" y="250" width="130" height="60"/>
+  <text class="txt" x="1073" y="288">Product</text>
+
+  <path class="line" d="M170 210 L210 210"/>
+  <path class="line" d="M320 200 L360 200 L360 121 L400 121"/>
+  <path class="line" d="M320 220 L360 220 L360 291 L400 291"/>
+  <path class="line" d="M510 121 L580 121"/>
+  <path class="line" d="M690 121 L725 121 L725 150 L760 150"/>
+  <path class="line" d="M510 291 L630 291 L630 240 L760 240"/>
+  <path class="line" d="M980 150 L1010 150 L1010 146 L1040 146"/>
+  <path class="line" d="M980 240 L1010 240 L1010 280 L1040 280"/>
+  <path class="line" d="M1100 120 L1100 87"/>
+  <path class="line" d="M1168 172 L1185 172 L1185 350 L375 350 L375 121 L400 121"/>
+
+</svg>

@@ -1,0 +1,52 @@
+ed_stack_1:
+  finite_elements: 10
+  has_pressure_change: true
+  pressure_drop_method: experimental
+  #friction_factor_method: fixed
+  #hydraulic_diameter_method: conventional
+  operation_mode: Constant_Current
+  has_nonohmic_potential_membrane: true
+  has_Nernst_diffusion_layer: true
+  limiting_current_density_method: InitialValue
+  limiting_current_density_data: 500
+
+ed_stack_2:
+  finite_elements: 10
+  has_pressure_change: true
+  pressure_drop_method: experimental
+  #friction_factor_method: fixed
+  #hydraulic_diameter_method: conventional
+  operation_mode: Constant_Current
+  has_nonohmic_potential_membrane: true
+  has_Nernst_diffusion_layer: true
+  limiting_current_density_method: InitialValue
+  limiting_current_density_data: 500
+
+ion:
+  solute_list: ["Na_+", "Ca_2+", "Mg_2+", "Cl_-"]
+  mw_data:
+    H2O: 0.018
+    Na_+: 0.023
+    Mg_2+: 0.024305
+    Ca_2+: 0.040078
+    Cl_-: 0.0355
+  charge:
+    Na_+: 1
+    Mg_2+: 2
+    Ca_2+: 2
+    Cl_-: -1
+  diffusivity_data:
+    Liq:
+      Na_+: 1.33e-9
+      Ca_2+: 0.793e-9
+      Mg_2+: 0.705e-9
+      Cl_-: 2.03e-9
+
+solution:
+  electrical_mobility_calculation: EinsteinRelation
+  equivalent_conductivity_calculation: Onsager_Falkenhagen
+  # equiv_conductivity_phase_data:
+  #   Liq: 0.01
+
+process:
+  build_costing: false
