@@ -164,24 +164,31 @@ class KStageConcentrateRecirculationData(KStageSinglePassData):
         self.fs.sepa0.initialize(solver=solver, optarg=optarg)
 
         propagate_state(self.fs.arc1b)
-        self.fs.pump1.deltaP[0].fix(2e5)
+        self.fs.pump1.deltaP[0].fix(20e5)
         self.fs.pump1.initialize(solver=solver, optarg=optarg)
         self.fs.pump1.deltaP[0].unfix()
 
         propagate_state(destination=self.fs.pump0.inlet, source=self.fs.pump1.inlet)
-        self.fs.pump0.deltaP[0].fix(2e5)
+        self.fs.pump0.deltaP[0].fix(20e5)
         self.fs.pump0.initialize(solver=solver, optarg=optarg)
         self.fs.pump0.deltaP[0].unfix()
 
         propagate_state(self.fs.arc1f)
         propagate_state(self.fs.arc3f)
 
-        self._ed(stages[0]).initialize(solver=solver, optarg=optarg)
+        try:
+            self._ed(stages[0]).initialize(solver=solver, optarg=optarg)
+        except Exception as e:
+            print(f"Error occurred while initializing ED Stage 1: {e}")
+
         for stage_num in stages[:-1]:
             next_stage = stage_num + 1
             propagate_state(getattr(self.fs, f"arc_intered{stage_num}_{next_stage}_dil"))
             propagate_state(getattr(self.fs, f"arc_intered{stage_num}_{next_stage}_conc"))
-            self._ed(next_stage).initialize(solver=solver, optarg=optarg)
+            try:
+                self._ed(next_stage).initialize(solver=solver, optarg=optarg)
+            except Exception as e:
+                print(f"Error occurred while initializing ED Stage {next_stage}: {e}")
 
         propagate_state(self.fs.arc4)
         self.fs.prod.initialize(solver=solver, optarg=optarg)
