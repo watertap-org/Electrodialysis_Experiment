@@ -37,6 +37,8 @@ Key methods used in training
 
 ``add_cation_cem_transport_number_simulator(...)``
   Attach stage-wise surrogate blocks indexed by ``sample_set``.
+  The selected ``SurrogateType`` may be any registered transport-number
+  surrogate, including ``SOFTMAX_COVARIATES``.
 
 ``add_log_linear_surr_coef_constraint()``
   Constrain surrogate coefficients to be equal across all sample simulators.
@@ -64,6 +66,18 @@ joint estimation problem:
 - all sample residuals contribute to one objective.
 
 This is equivalent to pooled nonlinear regression with process constraints.
+
+Surrogate interface note
+------------------------
+
+``add_cation_cem_transport_number_simulator(...)`` dispatches surrogate build
+logic through the registered surrogate interface exposed by
+``CationCemTransportNumberSimulator``. Surrogate-specific keyword arguments are
+passed through unchanged. This matters for the softmax surrogate, whose
+initializer requires ``feature_data`` in addition to measured transport-number
+targets. As a result, the experiment builder can support both simpler
+concentration-ratio surrogates and richer covariate-based surrogates without
+changing the higher-level experiment workflow.
 
 Snapshot mechanism
 ------------------

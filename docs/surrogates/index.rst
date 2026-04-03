@@ -21,4 +21,5 @@ Contents
 
    cation_cem_simulator
    log_linear_conc_ratio
+   softmax_covariates
    registry

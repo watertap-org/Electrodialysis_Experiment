@@ -20,6 +20,7 @@ Core components
 
 - ``LOG_LINEAR_POLYNOMIAL``
 - ``LOG_LINEAR_LOG``
+- ``SOFTMAX_COVARIATES``
 
 ``CationCemTransportNumberSimulator``
   Indexed ``ProcessBlock`` expected to be keyed by experiment ``sample_set``.
@@ -39,6 +40,12 @@ Initialization entry point
 ``initiate_surrogate(...)`` performs offline coefficient fitting using the
 registered initialization routine for the selected surrogate type, then writes
 fitted coefficient values into block variables.
+
+For surrogates that require additional covariates beyond concentration or
+transport-number targets, such as ``SOFTMAX_COVARIATES``, the initializer also
+passes surrogate-specific keyword data through to the registered fitting
+routine. In the current softmax implementation, this includes precomputed
+``feature_data`` built from local concentration ratios and current density.
 
 Role in training
 ----------------
