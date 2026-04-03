@@ -13,7 +13,7 @@ from typing import List, Dict, Tuple
 
 
 class SurrogateType(Enum):
-    LOG_LINEAR_POLYNOMIAL = "s"
+    LOG_LINEAR_POLYNOMIAL = "log_linear_polynomial"
     LOG_LINEAR_LOG = "log_linear_log"
     SOFTMAX_COVARIATES = "softmax_covariates"
     # Add other surrogate types as needed
@@ -44,10 +44,19 @@ class CationCemTransportNumberSimulatorData(ProcessBlockData):
         ConfigValue(default=5, domain=int, description="Polynomial Degree"),
     )
 
+    @staticmethod
+    def _normalize_surrogate_key(surrogate):
+        if isinstance(surrogate, SurrogateType):
+            surrogate = surrogate.value
+        # Backward compatibility for legacy shorthand found in older scripts.
+        if surrogate == "s":
+            return SurrogateType.LOG_LINEAR_POLYNOMIAL.value
+        return surrogate
+
     def build(self, *args, **kwargs):
         super().build()
         # self is CationCemTransportNumberSimulatorData indexed by sample_set
-        self._surrogate = self.config.surrogate.value
+        self._surrogate = self._normalize_surrogate_key(self.config.surrogate)
         if self.config.reference_ion is not None:
             self._reference_ion = self.config.reference_ion
         if self.config.poly_degree is not None:
@@ -114,7 +123,7 @@ class CationCemTransportNumberSimulatorData(ProcessBlockData):
                 f"Available: {list(SURROGATE_INITIALIZE)}"
             ) from e
 
-        coef_init = initiator(
+        init_kwargs = dict(
             conc_data=conc_data,
             trans_number_data=trans_number_data,
             fitting_coef_guess=fitting_coef_guess,
@@ -124,9 +133,12 @@ class CationCemTransportNumberSimulatorData(ProcessBlockData):
             coef_bounds=coef_bounds,
             eps=eps,
             plot_results=plot_results,
-            feature_data=feature_data,
             **extra_kwargs,
         )
+        if feature_data is not None:
+            init_kwargs["feature_data"] = feature_data
+
+        coef_init = initiator(**init_kwargs)
         if hasattr(self, "conc_ratio_coef"):
             for cation in self.cation_set:
                 if cation in coef_init:
