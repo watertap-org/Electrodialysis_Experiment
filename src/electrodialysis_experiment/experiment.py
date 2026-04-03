@@ -602,6 +602,77 @@ class MasterExperimentBuilder:
                         sim_comp[g].conc_ratio_coef[coef_idx] == ref_var
                     )
 
+    def add_softmax_surr_coef_constraint_grouped(
+        self, group_list, require_full_coverage=True
+    ):
+        m = self.model
+        if not hasattr(m, "cation_cem_transport_number_simulator"):
+            raise ValueError(
+                "Model is missing cation_cem_transport_number_simulator attribute."
+            )
+
+        sim_comp = m.cation_cem_transport_number_simulator
+        all_sims = list(sim_comp.index_set())
+
+        if not group_list or any(len(g) == 0 for g in group_list):
+            raise ValueError("group_list must be a non-empty list of non-empty groups.")
+
+        flat = [s for g in group_list for s in g]
+        missing = [s for s in flat if s not in sim_comp]
+        if missing:
+            raise ValueError(
+                f"These simulator indices are not present in the model: {missing}"
+            )
+
+        seen = set()
+        overlaps = set()
+        for s in flat:
+            if s in seen:
+                overlaps.add(s)
+            seen.add(s)
+        if overlaps:
+            raise ValueError(
+                f"Simulator indices appear in multiple groups: {sorted(overlaps)}"
+            )
+
+        if require_full_coverage:
+            not_grouped = [s for s in all_sims if s not in seen]
+            if not_grouped:
+                raise ValueError(
+                    f"These simulator indices are not included in any group: {not_grouped}"
+                )
+
+        ref_sim = group_list[0][0]
+        if not hasattr(sim_comp[ref_sim], "score_intercept") or not hasattr(
+            sim_comp[ref_sim], "score_coef"
+        ):
+            raise ValueError(
+                "Softmax surrogate parameter components score_intercept/score_coef not found."
+            )
+
+        intercept_indices = sim_comp[ref_sim].score_intercept.index_set()
+        coef_indices = sim_comp[ref_sim].score_coef.index_set()
+
+        m.softmax_score_intercept_group_equality_cons = pyo.ConstraintList()
+        m.softmax_score_coef_group_equality_cons = pyo.ConstraintList()
+
+        for group in group_list:
+            if len(group) == 1:
+                continue
+            g0 = group[0]
+            for ion in intercept_indices:
+                ref_var = sim_comp[g0].score_intercept[ion]
+                for g in group[1:]:
+                    m.softmax_score_intercept_group_equality_cons.add(
+                        sim_comp[g].score_intercept[ion] == ref_var
+                    )
+            for idx in coef_indices:
+                ref_var = sim_comp[g0].score_coef[idx]
+                for g in group[1:]:
+                    m.softmax_score_coef_group_equality_cons.add(
+                        sim_comp[g].score_coef[idx] == ref_var
+                    )
+
     def add_log_linear_surr_coef_constraint(self):
         m = self.model
         if not hasattr(m, "cation_cem_transport_number_simulator"):
@@ -636,6 +707,55 @@ class MasterExperimentBuilder:
         else:
             _log.warning(
                 "Warning: cation_cem_transport_number_simulator is not indexed. Cannot add coefficient equality constraints."
+            )
+
+    def add_softmax_surr_coef_constraint(self):
+        m = self.model
+        if not hasattr(m, "cation_cem_transport_number_simulator"):
+            raise ValueError(
+                "Model is missing cation_cem_transport_number_simulator attribute."
+            )
+
+        if hasattr(m.cation_cem_transport_number_simulator, "_index_set"):
+            first_sim_idx = next(iter(m.cation_cem_transport_number_simulator))
+            first_sim = m.cation_cem_transport_number_simulator[first_sim_idx]
+            if not hasattr(first_sim, "score_intercept") or not hasattr(
+                first_sim, "score_coef"
+            ):
+                raise ValueError(
+                    "Softmax surrogate parameter components score_intercept/score_coef not found."
+                )
+
+            intercept_indices = first_sim.score_intercept.index_set()
+            coef_indices = first_sim.score_coef.index_set()
+            m.softmax_score_intercept_equality_cons = pyo.ConstraintList()
+            m.softmax_score_coef_equality_cons = pyo.ConstraintList()
+
+            for ion in intercept_indices:
+                for sim_idx in m.cation_cem_transport_number_simulator:
+                    if sim_idx != first_sim_idx:
+                        m.softmax_score_intercept_equality_cons.add(
+                            m.cation_cem_transport_number_simulator[
+                                first_sim_idx
+                            ].score_intercept[ion]
+                            == m.cation_cem_transport_number_simulator[
+                                sim_idx
+                            ].score_intercept[ion]
+                        )
+            for idx in coef_indices:
+                for sim_idx in m.cation_cem_transport_number_simulator:
+                    if sim_idx != first_sim_idx:
+                        m.softmax_score_coef_equality_cons.add(
+                            m.cation_cem_transport_number_simulator[
+                                first_sim_idx
+                            ].score_coef[idx]
+                            == m.cation_cem_transport_number_simulator[
+                                sim_idx
+                            ].score_coef[idx]
+                        )
+        else:
+            _log.warning(
+                "Warning: cation_cem_transport_number_simulator is not indexed. Cannot add softmax coefficient equality constraints."
             )
 
     def _add_t_cation_smoothness_penalty(self):

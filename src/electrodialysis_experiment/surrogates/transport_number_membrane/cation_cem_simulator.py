@@ -8,12 +8,14 @@ from electrodialysis_experiment.surrogates.transport_number_membrane.registry im
 from idaes.core.util.misc import add_object_reference
 from enum import Enum
 from . import log_linear_conc_ratio
+from . import softmax_covariates
 from typing import List, Dict, Tuple
 
 
 class SurrogateType(Enum):
-    LOG_LINEAR_POLYNOMIAL = "log_linear_polynomial"
+    LOG_LINEAR_POLYNOMIAL = "s"
     LOG_LINEAR_LOG = "log_linear_log"
+    SOFTMAX_COVARIATES = "softmax_covariates"
     # Add other surrogate types as needed
 
 
@@ -90,15 +92,17 @@ class CationCemTransportNumberSimulatorData(ProcessBlockData):
 
     def initiate_surrogate(
         self,
-        conc_data: List[Dict[str, float]],
-        trans_number_data: List[Dict[str, float]],
-        fitting_coef_guess: Dict[str, float],
-        reference_ion: str,
+        conc_data: List[Dict[str, float]] | None = None,
+        trans_number_data: List[Dict[str, float]] | None = None,
+        fitting_coef_guess: Dict[str, float] | None = None,
+        reference_ion: str | None = None,
         coef_bounds: Dict[str, Tuple[float, float]] = None,
         log_objective: bool = False,
         polynomial_degree: int = 1,
         eps: float = 1e-12,
         plot_results: bool = True,
+        feature_data: List[Dict[str, float]] | None = None,
+        **extra_kwargs,
     ):
         # Initialize the surrogate model
         try:
@@ -120,8 +124,33 @@ class CationCemTransportNumberSimulatorData(ProcessBlockData):
             coef_bounds=coef_bounds,
             eps=eps,
             plot_results=plot_results,
+            feature_data=feature_data,
+            **extra_kwargs,
         )
-        for cation in self.cation_set:
-            if cation in coef_init:
-                self.conc_ratio_coef[cation].set_value(coef_init[cation])
+        if hasattr(self, "conc_ratio_coef"):
+            for cation in self.cation_set:
+                if cation in coef_init:
+                    self.conc_ratio_coef[cation].set_value(coef_init[cation])
+        if hasattr(self, "score_intercept"):
+            intercept = coef_init.get("intercept", {})
+            coef = coef_init.get("coef", {})
+            feature_center = coef_init.get("feature_center", {})
+            feature_scale = coef_init.get("feature_scale", {})
+            for ion in self.score_intercept:
+                if ion in intercept:
+                    self.score_intercept[ion].set_value(intercept[ion])
+            for ion in self.nonref_ion_set:
+                if ion not in coef:
+                    continue
+                for feature in self.feature_set:
+                    if feature in coef[ion]:
+                        self.score_coef[ion, feature].set_value(coef[ion][feature])
+            if hasattr(self, "feature_center"):
+                for feature in self.feature_set:
+                    if feature in feature_center:
+                        self.feature_center[feature].set_value(feature_center[feature])
+            if hasattr(self, "feature_scale"):
+                for feature in self.feature_set:
+                    if feature in feature_scale:
+                        self.feature_scale[feature].set_value(feature_scale[feature])
         return coef_init
