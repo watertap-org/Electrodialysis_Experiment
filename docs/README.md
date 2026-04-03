@@ -37,3 +37,35 @@ sphinx-build -b html docs docs/_build/html
 Generated site output:
 
 - `docs/_build/html/index.html`
+
+## View locally
+
+After building, open `docs/_build/html/index.html` using one of the options
+below.
+
+Open the generated HTML file directly from the terminal:
+
+```bash
+# macOS
+open docs/_build/html/index.html
+
+# Linux
+xdg-open docs/_build/html/index.html
+
+# Windows PowerShell
+start docs/_build/html/index.html
+```
+
+If you prefer to serve the docs through a local web server, run:
+
+```bash
+python -m http.server 8000 -d docs/_build/html
+```
+
+Then open:
+
+- `http://localhost:8000`
+
+The direct file-open commands are the quickest option. The local web server is
+the most portable option and can be useful if your browser blocks some local
+file behavior.
