@@ -1,3 +1,16 @@
+#################################################################################
+# Electrodialysis_Experiment is part of the WaterTAP software platform.
+#
+# WaterTAP Copyright (c) 2020-2026, The Regents of the University of California,
+# through Lawrence Berkeley National Laboratory, Oak Ridge National Laboratory,
+# National Laboratory of the Rockies, and National Energy Technology
+# Laboratory (subject to receipt of any required approvals from the U.S. Dept.
+# of Energy). All rights reserved.
+#
+# Please see the files COPYRIGHT.md and LICENSE.md for full copyright and license
+# information, respectively. These files are also available online at the URL
+# "https://github.com/watertap-org/watertap/"
+#################################################################################
 from __future__ import annotations
 
 import sys
@@ -10,10 +23,8 @@ if str(SRC_PATH) not in sys.path:
     sys.path.insert(0, str(SRC_PATH))
 
 project = "Electrodialysis Experiment"
-author = "WaterTAP Organization and Electrodialysis Experiment Contributors"
-copyright = (
-    "2026, WaterTAP Organization and Electrodialysis Experiment Contributors"
-)
+author = "Xiangyu Bi, NAWI"
+copyright = "2020-2026, NAWI"
 release = "0.1.0"
 
 extensions = [

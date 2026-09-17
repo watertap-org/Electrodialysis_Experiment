@@ -91,7 +91,8 @@ ELECTRODIALYSIS_EXPERIMENT/
 ```
 ## License
 
-This project uses a WaterTAP-style license and copyright model.
+Electrodialysis_Experiment is part of the WaterTAP software platform and shares
+the same license and copyright as [WaterTAP](https://github.com/watertap-org/watertap).
 See `LICENSE.md` and `COPYRIGHT.md` in the repository root.
 
 ## Contact
